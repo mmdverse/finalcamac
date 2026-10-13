@@ -13,6 +13,14 @@ gsap.registerPlugin(ScrollTrigger);
 
 const ASSEMBLED_AT = 0.985;
 
+// Shared treatment keeps the three Hero rows optically uniform.
+const STROKE_FILL = '#555B5E';
+const STROKE_ACCENT = '#F2B632';
+const STROKE_WEIGHT = 300;
+const STROKE_WIDTH = 0.6;
+const HERO_STROKE_SIZE = 19;
+const ASSEMBLY_STROKE_SIZE = 17;
+
 /**
  * The sequence spacer is the scroll track for the cinematic assembly.
  * Its progress (0..1) drives the 3D scene. Once the cabin is complete it stays complete:
@@ -273,17 +281,17 @@ export default function Site({ cabin, heroReady = false }) {
             <div className="camac-stroke-line" aria-hidden="true">
               <StrokeText
                 text="آسانسوری"
-                strokeColor="#000000"
-                fillColor="#000000"
-                strokeWidth={1.1}
+                strokeColor={STROKE_ACCENT}
+                fillColor={STROKE_FILL}
+                strokeWidth={STROKE_WIDTH}
                 drawDuration={1.05}
                 fillDelay={0.08}
                 stagger={0.02}
                 ease="power2.out"
                 trigger="mount"
                 fillMode="fade"
-                fontSize={38}
-                fontWeight={600}
+                fontSize={HERO_STROKE_SIZE}
+                fontWeight={STROKE_WEIGHT}
                 letterSpacing={0}
                 style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
               />
@@ -291,17 +299,17 @@ export default function Site({ cabin, heroReady = false }) {
             <div className="camac-stroke-line" aria-hidden="true">
               <StrokeText
                 text="که معماری را"
-                strokeColor="#000000"
-                fillColor="#000000"
-                strokeWidth={1.1}
+                strokeColor={STROKE_ACCENT}
+                fillColor={STROKE_FILL}
+                strokeWidth={STROKE_WIDTH}
                 drawDuration={1.05}
                 fillDelay={0.08}
                 stagger={0.02}
                 ease="power2.out"
                 trigger="mount"
                 fillMode="fade"
-                fontSize={38}
-                fontWeight={600}
+                fontSize={HERO_STROKE_SIZE}
+                fontWeight={STROKE_WEIGHT}
                 letterSpacing={0}
                 style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
               />
@@ -309,17 +317,17 @@ export default function Site({ cabin, heroReady = false }) {
             <div className="camac-stroke-line" aria-hidden="true">
               <StrokeText
                 text="حرکت میدهد"
-                strokeColor="#000000"
-                fillColor="#000000"
-                strokeWidth={1.1}
+                strokeColor={STROKE_ACCENT}
+                fillColor={STROKE_FILL}
+                strokeWidth={STROKE_WIDTH}
                 drawDuration={1.05}
                 fillDelay={0.08}
                 stagger={0.02}
                 ease="power2.out"
                 trigger="mount"
                 fillMode="fade"
-                fontSize={38}
-                fontWeight={600}
+                fontSize={HERO_STROKE_SIZE}
+                fontWeight={STROKE_WEIGHT}
                 letterSpacing={0}
                 style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
               />
@@ -338,17 +346,17 @@ export default function Site({ cabin, heroReady = false }) {
             <div className="camac-stroke-line" aria-hidden="true">
               <StrokeText
                 text="مهندسی قطعه به قطعه"
-                strokeColor="#000000"
-                fillColor="#000000"
-                strokeWidth={1.1}
+                strokeColor={STROKE_ACCENT}
+                fillColor={STROKE_FILL}
+                strokeWidth={STROKE_WIDTH}
                 drawDuration={1.1}
                 fillDelay={0.08}
                 stagger={0.02}
                 ease="power2.out"
                 trigger="mount"
                 fillMode="fade"
-                fontSize={34}
-                fontWeight={600}
+                fontSize={ASSEMBLY_STROKE_SIZE}
+                fontWeight={STROKE_WEIGHT}
                 letterSpacing={0}
                 style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
               />
@@ -356,17 +364,17 @@ export default function Site({ cabin, heroReady = false }) {
             <div className="camac-stroke-line" aria-hidden="true">
               <StrokeText
                 text="همراه با کاماک"
-                strokeColor="#000000"
-                fillColor="#000000"
-                strokeWidth={1.1}
+                strokeColor={STROKE_ACCENT}
+                fillColor={STROKE_FILL}
+                strokeWidth={STROKE_WIDTH}
                 drawDuration={1.1}
                 fillDelay={0.08}
                 stagger={0.02}
                 ease="power2.out"
                 trigger="mount"
                 fillMode="fade"
-                fontSize={34}
-                fontWeight={600}
+                fontSize={ASSEMBLY_STROKE_SIZE}
+                fontWeight={STROKE_WEIGHT}
                 letterSpacing={0}
                 style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
               />

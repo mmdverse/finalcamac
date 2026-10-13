@@ -384,11 +384,11 @@ a.sfooter-item:hover { color: #e0a800; }
   pointer-events: none;
   opacity: 0;
   transform: translateY(-8px);
-  filter: drop-shadow(0 2px 14px rgba(0, 0, 0, .4));
+  filter: drop-shadow(0 1px 6px rgba(0, 0, 0, .18));
   transition: opacity .65s var(--ease), transform .65s var(--ease);
 }
 .camac-stroke-message.is-visible { opacity: 1; transform: translateY(0); }
-.camac-stroke-line { display: flex; direction: ltr; justify-content: flex-end; width: auto; max-width: 100%; }
+.camac-stroke-line { display: flex; direction: ltr; justify-content: flex-end; width: 100%; max-width: 100%; }
 .camac-stroke-message .stroke-text { width: auto !important; max-width: 100%; }
 .camac-stroke-message .stroke-text__svg { width: auto !important; max-width: 100%; overflow: visible; }
 .camac-stroke-message .stroke-text__stroke,
