@@ -13,9 +13,9 @@ gsap.registerPlugin(ScrollTrigger);
 
 const ASSEMBLED_AT = 0.985;
 
-// Shared treatment keeps the three Hero rows optically uniform.
-const STROKE_FILL = '#555B5E';
-const STROKE_OUTLINE = '#FFFFFF';
+// Shared type and color treatment for Hero and assembly StrokeText.
+const STROKE_FILL = '#FFFFFF';
+const STROKE_OUTLINE = '#555B5E';
 const STROKE_WEIGHT = 300;
 const STROKE_WIDTH = 0.6;
 const HERO_STROKE_SIZE = 19;
@@ -269,7 +269,7 @@ export default function Site({ cabin, heroReady = false }) {
         {/* One-viewport stage for the timed hero intro (plays before the assembly). */}
         <div className="hero-track" aria-hidden="true" />
 
-        {/* The Hero title joins the brand lockup below; the assembly caption remains in the upper corner. */}
+        {/* The assembly caption appears with the first piece as one centered line in the upper corner. */}
         {showAssemblyStroke && (
           <div
             className={`camac-stroke-message camac-assembly-message ${assemblyStrokeVisible ? 'is-visible' : ''}`}
@@ -280,25 +280,7 @@ export default function Site({ cabin, heroReady = false }) {
           >
             <div className="camac-stroke-line" aria-hidden="true">
               <StrokeText
-                text="مهندسی قطعه به قطعه"
-                strokeColor={STROKE_OUTLINE}
-                fillColor={STROKE_FILL}
-                strokeWidth={STROKE_WIDTH}
-                drawDuration={1.1}
-                fillDelay={0.08}
-                stagger={0.02}
-                ease="power2.out"
-                trigger="mount"
-                fillMode="fade"
-                fontSize={ASSEMBLY_STROKE_SIZE}
-                fontWeight={STROKE_WEIGHT}
-                letterSpacing={0}
-                style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
-              />
-            </div>
-            <div className="camac-stroke-line" aria-hidden="true">
-              <StrokeText
-                text="همراه با کاماک"
+                text="مهندسی قطعه به قطعه همراه با کاماک"
                 strokeColor={STROKE_OUTLINE}
                 fillColor={STROKE_FILL}
                 strokeWidth={STROKE_WIDTH}
@@ -317,7 +299,7 @@ export default function Site({ cabin, heroReady = false }) {
           </div>
         )}
 
-        {/* Brand lockup and Hero StrokeText share one aligned block; the caption sits below the address. */}
+        {/* Brand identity, the three-line Hero headline under its tagline, then the address. */}
         <div className="hero-brand" dir="ltr">
           <div className={`hero-brand-lockup ${brandOn ? 'is-on' : ''}`} aria-hidden={!brandOn}>
             <div className="hero-logo">
@@ -325,7 +307,6 @@ export default function Site({ cabin, heroReady = false }) {
               <span className="hero-word">C<span className="a">A</span>MAC</span>
             </div>
             <div className="hero-tag" dir="rtl">شروع از ۱۳۹۵</div>
-            <div className="hero-address" dir="rtl">قم، خیابان سمیه، خیابان معلم شرقی، مجتمع عمرانیه، طبقه اول، واحد ۱۱۹</div>
           </div>
           {heroReady && heroStrokeStarted && (
             <div
@@ -391,6 +372,9 @@ export default function Site({ cabin, heroReady = false }) {
               </div>
             </div>
           )}
+          <div className={`hero-address ${brandOn ? 'is-on' : ''}`} dir="rtl" aria-hidden={!brandOn}>
+            قم، خیابان سمیه، خیابان معلم شرقی، مجتمع عمرانیه، طبقه اول، واحد ۱۱۹
+          </div>
         </div>
 
         {/* Scroll cue of the final hero frame. */}

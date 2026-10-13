@@ -399,7 +399,14 @@ a.sfooter-item:hover { color: #e0a800; }
   font-family: 'Estedad', system-ui, sans-serif;
 }
 .camac-hero-message { z-index: 8; }
-.camac-assembly-message { top: clamp(20px, 4vh, 44px); z-index: 7; }
+.camac-assembly-message {
+  top: clamp(20px, 4vh, 44px);
+  z-index: 7;
+  align-items: center;
+}
+.camac-assembly-message .camac-stroke-line { justify-content: center; }
+.camac-assembly-message .stroke-text__stroke,
+.camac-assembly-message .stroke-text__fill { text-anchor: middle; }
 
 /* Brand lockup (final reveal frame): icon + CAMAC + tagline, left side. */
 .hero-brand {
@@ -418,8 +425,12 @@ a.sfooter-item:hover { color: #e0a800; }
   position: relative;
   inset: auto;
   width: min(330px, 52vw);
-  margin-top: 8px;
+  margin-top: 4px;
+  align-items: center;
 }
+.hero-brand > .camac-hero-message .camac-stroke-line { justify-content: center; }
+.hero-brand > .camac-hero-message .stroke-text__stroke,
+.hero-brand > .camac-hero-message .stroke-text__fill { text-anchor: middle; }
 .hero-logo { display: flex; align-items: center; gap: 16px; }
 .hero-logo svg { width: clamp(30px, 3.4vw, 46px); height: auto; display: block; }
 .hero-logo-img {
@@ -445,7 +456,12 @@ a.sfooter-item:hover { color: #e0a800; }
   direction: rtl;
   text-align: left;
   unicode-bidi: plaintext;
+  opacity: 0;
+  transform: translateY(-8px);
+  text-shadow: 0 1px 24px rgba(0, 0, 0, .35);
+  transition: opacity 1.1s var(--ease), transform 1.1s var(--ease);
 }
+.hero-address.is-on { opacity: 1; transform: translateY(0); }
 
 /* Scroll cue (final hero frame, right side): circle / line / text / line / circle. */
 .hero-cue {
@@ -472,7 +488,7 @@ a.sfooter-item:hover { color: #e0a800; }
   .hero-word { font-size: 26px; letter-spacing: .1em; }
   .hero-tag { margin-top: 10px; font-size: 10px; letter-spacing: .01em; }
   .hero-address { width: min(270px, 70vw); margin-top: 3px; font-size: 9px; }
-  .hero-brand > .camac-hero-message { width: min(270px, 70vw); margin-top: 6px; }
+  .hero-brand > .camac-hero-message { width: min(270px, 70vw); margin-top: 3px; }
   .camac-stroke-message { top: 18px; right: 18px; width: calc(100vw - 36px); }
   .hero-cue .l { height: 34px; }
   .hero-cue .t { font-size: 10px; }
