@@ -1,0 +1,33 @@
+{
+  "id": "/",
+  "name": "طراحی و مهندسی کابین آسانسور در قم | کاماک",
+  "short_name": "کاماک",
+  "description": "کاماک از ۱۳۹۵ در قم، طراحی و مهندسی کابین آسانسور را با نگاه معماری و توجه به جزئیات هر قطعه دنبال می‌کند.",
+  "lang": "fa",
+  "dir": "rtl",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#232527",
+  "theme_color": "#cfccc4",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

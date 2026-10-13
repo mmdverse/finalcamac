@@ -404,12 +404,22 @@ a.sfooter-item:hover { color: #e0a800; }
 /* Brand lockup (final reveal frame): icon + CAMAC + tagline, left side. */
 .hero-brand {
   position: fixed; left: 7vw; top: 50%; z-index: 6;
-  transform: translateY(-44%);
-  opacity: 0; pointer-events: none;
-  transition: opacity 1.1s var(--ease), transform 1.1s var(--ease);
-  text-shadow: 0 1px 24px rgba(0, 0, 0, .35);
+  transform: translateY(-50%);
+  pointer-events: none;
 }
-.hero-brand.is-on { opacity: 1; transform: translateY(-50%); }
+.hero-brand-lockup {
+  opacity: 0;
+  transform: translateY(-8px);
+  text-shadow: 0 1px 24px rgba(0, 0, 0, .35);
+  transition: opacity 1.1s var(--ease), transform 1.1s var(--ease);
+}
+.hero-brand-lockup.is-on { opacity: 1; transform: translateY(0); }
+.hero-brand > .camac-hero-message {
+  position: relative;
+  inset: auto;
+  width: min(330px, 52vw);
+  margin-top: 8px;
+}
 .hero-logo { display: flex; align-items: center; gap: 16px; }
 .hero-logo svg { width: clamp(30px, 3.4vw, 46px); height: auto; display: block; }
 .hero-logo-img {
@@ -452,6 +462,7 @@ a.sfooter-item:hover { color: #e0a800; }
   .hero-brand { left: 8vw; }
   .hero-cue { right: 7vw; }
   .hero-address { width: min(280px, 58vw); font-size: 9px; }
+  .hero-brand > .camac-hero-message { width: min(280px, 58vw); }
   .camac-stroke-message { right: 20px; width: calc(100vw - 40px); }
 }
 @media (max-width: 640px) {
@@ -461,6 +472,7 @@ a.sfooter-item:hover { color: #e0a800; }
   .hero-word { font-size: 26px; letter-spacing: .1em; }
   .hero-tag { margin-top: 10px; font-size: 10px; letter-spacing: .01em; }
   .hero-address { width: min(270px, 70vw); margin-top: 3px; font-size: 9px; }
+  .hero-brand > .camac-hero-message { width: min(270px, 70vw); margin-top: 6px; }
   .camac-stroke-message { top: 18px; right: 18px; width: calc(100vw - 36px); }
   .hero-cue .l { height: 34px; }
   .hero-cue .t { font-size: 10px; }
