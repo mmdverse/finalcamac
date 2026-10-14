@@ -299,7 +299,7 @@ export default function Site({ cabin, heroReady = false }) {
           </div>
         )}
 
-        {/* Brand identity, the three-line Hero headline under its tagline, then the address. */}
+        {/* Brand identity, the three-line Hero headline aligned directly under its tagline, then the address. */}
         <div className="hero-brand" dir="ltr">
           <div className={`hero-brand-lockup ${brandOn ? 'is-on' : ''}`} aria-hidden={!brandOn}>
             <div className="hero-logo">

@@ -426,9 +426,10 @@ a.sfooter-item:hover { color: #e0a800; }
   inset: auto;
   width: min(330px, 52vw);
   margin-top: 4px;
-  align-items: center;
+  margin-left: -2px;
+  align-items: flex-start;
 }
-.hero-brand > .camac-hero-message .camac-stroke-line { justify-content: center; }
+.hero-brand > .camac-hero-message .camac-stroke-line { justify-content: flex-start; }
 .hero-brand > .camac-hero-message .stroke-text__stroke,
 .hero-brand > .camac-hero-message .stroke-text__fill { text-anchor: middle; }
 .hero-logo { display: flex; align-items: center; gap: 16px; }
