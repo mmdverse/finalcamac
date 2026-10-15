@@ -61,7 +61,7 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
     >
       <Environment />
       {/* Storyboard hero: owns the camera while act === 'hero'. */}
-      <HeroScene />
+      <HeroScene cabin={cabin} skipCabin={skipModel} />
       {/* The studio (stage + cabin assembly) only shows in the site act. */}
       <group visible={act === 'site'}>
         <Lights />

@@ -1,8 +1,16 @@
 
 
 @font-face {
-  font-family: 'Estedad';
-  src: url('/fonts/Estedad-VF.woff2') format('woff2');
+  font-family: 'Noto Kufi Arabic';
+  src: url('/fonts/NotoKufiArabic-Arabic.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Vazirmatn';
+  src: url('/fonts/Vazirmatn-VF.woff2') format('woff2');
   font-style: normal;
   font-weight: 100 900;
   font-display: swap;
@@ -20,7 +28,7 @@
 * { box-sizing: border-box; }
 html, body, #root { margin: 0; padding: 0; background: var(--bg); color: var(--fg); }
 body {
-  font-family: 'Vazirmatn', system-ui, sans-serif;
+  font-family: 'Noto Kufi Arabic', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -289,7 +297,17 @@ body { background: var(--bg); }
 
 /* ---------- Loader: brand video on pure black, white glitch bar at the bottom edge ---------- */
 .loader { background: #000; gap: 0; }
-.loader-video { display: block; width: min(640px, 92vw); height: auto; background: #000; }
+.loader-media {
+  position: relative; width: min(640px, 92vw); aspect-ratio: 71 / 40;
+  overflow: hidden; background: #000;
+}
+.loader-poster, .loader-video {
+  position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+  object-fit: contain;
+}
+.loader-poster { background: #000; }
+.loader-video { background: #000; }
+.loader-video.is-failed { display: none; }
 .loader-bar {
   position: absolute; left: 0; right: 0; bottom: 0;
   width: auto; height: 4px; background: transparent;
@@ -396,7 +414,7 @@ a.sfooter-item:hover { color: #e0a800; }
   direction: rtl;
   unicode-bidi: plaintext;
   text-anchor: end;
-  font-family: 'Estedad', system-ui, sans-serif;
+  font-family: 'Noto Kufi Arabic', system-ui, sans-serif;
 }
 .camac-hero-message { z-index: 8; }
 .camac-assembly-message {
@@ -523,6 +541,7 @@ a.sfooter-item:hover { color: #e0a800; }
   background-size: 48px 48px;
   mask-image: linear-gradient(to bottom, black, transparent 84%);
 }
+.camac-calculator { font-family: 'Vazirmatn', system-ui, sans-serif; }
 .calc-container { position: relative; width: min(1240px, 100%); margin: 0 auto; }
 .calc-eyebrow {
   display: flex; align-items: center; gap: 12px; margin-bottom: 18px;
@@ -567,7 +586,8 @@ a.sfooter-item:hover { color: #e0a800; }
 .calc-subhead-live { margin-right: auto; color: #9da3a0; font-size: 10px; }
 .calc-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 13px 11px; }
 .calc-field { display: block; min-width: 0; }
-.calc-field-label { display: block; margin: 0 0 7px; color: #b7bab7; font-size: 11px; }
+.calc-field-label { display: block; margin: 0 0 7px; color: #b7bab7; font-size: 11px; line-height: 1.7; }
+.calc-field-hint { margin-inline-start: 3px; color: #909794; font-size: 10px; font-weight: 400; }
 .calc-field-control { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .calc-field-control input, .calc-field-control select {
   width: 100%; min-width: 0; height: 42px; padding: 0 11px;
@@ -594,6 +614,12 @@ a.sfooter-item:hover { color: #e0a800; }
 .calc-metric.is-featured .calc-metric-value { color: #f2d06a; }
 .calc-metric-value small { color: #858b89; font-size: 10px; font-weight: 400; }
 .calc-metric.is-message .calc-metric-value { font-size: 12px; color: #c6c8c3; }
+.calc-metric.is-error { border-color: rgba(239, 83, 80, .72); background: linear-gradient(135deg, rgba(210, 54, 54, .16), rgba(34, 20, 21, .72)); }
+.calc-metric.is-error .calc-metric-label,
+.calc-metric.is-error .calc-metric-value,
+.calc-metric.is-error.is-featured .calc-metric-value,
+.calc-metric.is-error.is-message .calc-metric-value { color: #ff8380; }
+.calc-metric.is-error .calc-metric-value small { color: #e5aaa8; }
 .calc-table-wrap { width: 100%; overflow-x: auto; border: 1px solid rgba(255,255,255,.09); scrollbar-width: thin; scrollbar-color: rgba(224,168,0,.4) transparent; }
 .calc-table { width: 100%; border-collapse: collapse; min-width: 500px; background: rgba(14,16,17,.26); }
 .calc-table th, .calc-table td { padding: 12px 13px; border-bottom: 1px solid rgba(255,255,255,.07); text-align: right; font-size: 11px; white-space: nowrap; }

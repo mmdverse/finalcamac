@@ -39,6 +39,7 @@ export default function App() {
 function Loader({ done, brand }) {
   const { progress } = useProgress();
   const [unmounted, setUnmounted] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
   const hidden = done; // the real load decides when the screen goes, not the video length
 
   useEffect(() => {
@@ -51,19 +52,22 @@ function Loader({ done, brand }) {
 
   return (
     <div className={`loader ${hidden ? 'is-hidden' : ''}`} role="status" aria-live="polite">
-      <video
-        className="loader-video"
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        aria-label={brand}
-        onError={() => setUnmounted(true)}
-      >
-        <source src="/brand/loading.webm" type="video/webm" />
-        <source src="/brand/loading.mp4" type="video/mp4" />
-      </video>
+      <div className="loader-media">
+        <img className="loader-poster" src="/brand/logo.webp" alt="" width="512" height="512" decoding="async" />
+        <video
+          className={`loader-video${videoFailed ? ' is-failed' : ''}`}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          aria-label={brand}
+          onError={() => setVideoFailed(true)}
+        >
+          <source src="/brand/loading.mp4" type="video/mp4" />
+          <source src="/brand/loading.webm" type="video/webm" />
+        </video>
+      </div>
       <div className="loader-bar">
         <span style={{ transform: `scaleX(${Math.max(0.02, progress / 100)})` }} />
       </div>

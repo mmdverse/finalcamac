@@ -2,11 +2,14 @@ import { useMemo, useState } from 'react';
 import workbook from '../calculator/workbook.json';
 import { calculateWorkbook, getWorkbookCellValue } from '../calculator/excelEngine';
 import { CALCULATORS, CALCULATOR_GROUPS } from '../calculator/definitions';
+import { isShaftWidthErrorMetric, isShaftWidthMismatch } from '../calculator/resultStatus';
+import { visibleCalculatorText } from '../calculator/displayText';
 
 const calculatorById = new Map(CALCULATORS.map((calculator) => [calculator.id, calculator]));
+const ROOMLESS_BACK_NOTE = 'اگر اجرای روملس واقعی (نه فیک) با جانمایی وزنهٔ پشت مدنظر است، عرض چاه را ۵ سانتی‌متر بیشتر در نظر بگیرید.';
 
 function displayNumber(value, maxFractionDigits = 4) {
-  if (typeof value !== 'number') return String(value ?? '—');
+  if (typeof value !== 'number') return visibleCalculatorText(value ?? '—');
   if (!Number.isFinite(value)) return '—';
   return new Intl.NumberFormat('fa-IR', { maximumFractionDigits: maxFractionDigits }).format(value);
 }
@@ -18,7 +21,7 @@ function sourceValue(address) {
 
 function sourceText(address) {
   const cell = workbook.cells[address.toUpperCase()];
-  return cell?.value ?? '';
+  return visibleCalculatorText(cell?.value ?? '');
 }
 
 function sourceUnit(address) {
@@ -27,10 +30,10 @@ function sourceUnit(address) {
   return match?.[1] ?? '';
 }
 
-function Metric({ label, value, unit, featured }) {
+function Metric({ label, value, unit, featured, status }) {
   const isMessage = typeof value === 'string' && (value.length > 18 || value.startsWith('#'));
   return (
-    <div className={`calc-metric ${featured ? 'is-featured' : ''} ${isMessage ? 'is-message' : ''}`}>
+    <div className={`calc-metric ${featured ? 'is-featured' : ''} ${isMessage ? 'is-message' : ''} ${status === 'error' ? 'is-error' : ''}`}>
       <div className="calc-metric-label">{label}</div>
       <div className="calc-metric-value" dir="auto">
         <span>{displayNumber(value)}</span>
@@ -45,7 +48,9 @@ function InputField({ field, value, onChange }) {
   const current = value == null ? '' : String(value);
   return (
     <label className="calc-field" htmlFor={id}>
-      <span className="calc-field-label">{field.label}</span>
+      <span className="calc-field-label">
+        {visibleCalculatorText(field.label)}{field.hint && <> <small className="calc-field-hint">({visibleCalculatorText(field.hint)})</small></>}
+      </span>
       <span className="calc-field-control">
         {field.type === 'select' ? (
           <select
@@ -81,13 +86,19 @@ function InputField({ field, value, onChange }) {
   );
 }
 
-function MetricGrid({ metrics, values, overrides }) {
+function MetricGrid({ calculatorId, metrics, values, overrides }) {
+  const shaftWidthMismatch = isShaftWidthMismatch(
+    calculatorId,
+    (cell) => getWorkbookCellValue(workbook, cell, values, overrides),
+  );
+
   return (
     <div className="calc-metrics">
       {metrics.map((metric) => {
         const value = getWorkbookCellValue(workbook, metric.cell, values, overrides);
-        const label = metric.labelCell ? sourceText(metric.labelCell) : metric.label;
-        return <Metric key={metric.cell} label={label} value={value} unit={metric.unit} featured={metric.featured} />;
+        const label = metric.labelCell ? sourceText(metric.labelCell) : visibleCalculatorText(metric.label);
+        const status = isShaftWidthErrorMetric(calculatorId, metric.cell, shaftWidthMismatch) ? 'error' : undefined;
+        return <Metric key={metric.cell} label={label} value={value} unit={metric.unit} featured={metric.featured} status={status} />;
       })}
     </div>
   );
@@ -270,7 +281,7 @@ function renderResults(calculator, values, overrides) {
       </>
     );
   }
-  return <MetricGrid metrics={presentation.metrics} values={values} overrides={overrides} />;
+  return <MetricGrid calculatorId={calculator.id} metrics={presentation.metrics} values={values} overrides={overrides} />;
 }
 
 function notesFor(calculator, values, overrides) {
@@ -319,7 +330,10 @@ export default function CalculatorSection() {
     calculator.fields.forEach(({ cell }) => delete next[cell]);
     return next;
   });
-  const displayedNotes = hasCompleteInputs ? notesFor(calculator, values, overrides) : '';
+  const roomlessWithRearCounterweight = calculator.id === 'iron' && overrides.AB5 === 'پشت' && overrides.AF18 === 'روملس';
+  const displayedNotes = roomlessWithRearCounterweight
+    ? ROOMLESS_BACK_NOTE
+    : hasCompleteInputs ? notesFor(calculator, values, overrides) : '';
 
   return (
     <section id="calculator" className="camac-calculator interactive" dir="rtl" aria-labelledby="calc-title">

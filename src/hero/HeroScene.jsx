@@ -6,7 +6,11 @@ import { store } from '../lib/store';
 import { sampleCameraPath } from '../lib/cameraMath';
 import { HERO_CAMERA, HERO_ATMO, HERO_SECONDS, PAL } from './heroData';
 import { liftTravelAt } from './liftMotion';
-import { createLiftRig } from './liftModel';
+import { attachHeroCabin, createLiftRig } from './liftModel';
+import { pickModelUrl } from '../lib/modelQuality';
+
+// Cabin Pro is Draco-compressed; serve the same local decoder used by the studio viewer.
+useGLTF.setDecoderPath('/draco/gltf/');
 
 /**
  * The storyboard, rebuilt as a real 3D environment (not slides, not video).
@@ -16,8 +20,8 @@ import { createLiftRig } from './liftModel';
  *
  * Beats (see heroData.js): fog+particles -> line network -> wireframe city ->
  * open plaza and surface-mounted elevator -> yellow rings -> close passes -> wide brand frame.
- * The shaft enclosure is removed; the elevator frame rests on the plaza and its named car
- * assembly moves vertically on the GLB's Y axis while the hero intro and idle frame play.
+ * The shaft enclosure is removed; the CHB frame rests on the plaza, while the fully assembled
+ * Cabin Pro model and its carsling/yoke move together on the GLB's Y axis.
  */
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -498,14 +502,28 @@ function buildHeroWorld() {
   return { group, update, dispose, M };
 }
 
-/**
- * The source GLB has no embedded animation clips. Its named `01_Carsling_CHB`
- * assembly is the moving car; animate that complete group on the GLB's Y-up axis.
- * The 12 s surface-display cycle includes lower/upper dwells and a smooth 2.47 m rise/descent.
- */
-function HeroLift({ rigRef }) {
+/** The Hero can still run in the lightweight ?nogl QA mode without loading the cabin GLB. */
+function HeroLift({ rigRef, cabin, skipCabin }) {
+  return skipCabin || !cabin?.model
+    ? <HeroLiftFrame rigRef={rigRef} />
+    : <HeroLiftWithCabin rigRef={rigRef} cabin={cabin} />;
+}
+
+function HeroLiftFrame({ rigRef }) {
   const { scene } = useGLTF('/models/camac-lift-chb.glb');
   const rig = useMemo(() => createLiftRig(scene, PAL.yellow), [scene]);
+  return <primitive object={rig} ref={rigRef} />;
+}
+
+/** Load both real GLBs, then mount a pristine Cabin Pro clone on the moving CHB carsling. */
+function HeroLiftWithCabin({ rigRef, cabin }) {
+  const { scene: liftScene } = useGLTF('/models/camac-lift-chb.glb');
+  const { scene: cabinScene } = useGLTF(pickModelUrl(cabin.model));
+  const rig = useMemo(() => {
+    const assembledRig = createLiftRig(liftScene, PAL.yellow);
+    attachHeroCabin(assembledRig, cabinScene);
+    return assembledRig;
+  }, [liftScene, cabinScene]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
@@ -535,7 +553,7 @@ const UPV = new THREE.Vector3(0, 1, 0);
  * framing, and a click sends a ripple across the plaza the cabin answers to.
  * QA: `?freeze=<s>` or window.__FREEZE pins the timeline for screenshots.
  */
-export default function HeroScene() {
+export default function HeroScene({ cabin, skipCabin = false }) {
   const { camera, scene, gl } = useThree();
   const world = useMemo(() => buildHeroWorld(), []);
   const liftRef = useRef(null);
@@ -665,7 +683,7 @@ export default function HeroScene() {
     <>
       <primitive object={world.group} />
       <Suspense fallback={null}>
-        <HeroLift rigRef={liftRef} />
+        <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} />
       </Suspense>
     </>
   );

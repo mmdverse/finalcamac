@@ -2,7 +2,7 @@
 // icon: pin | globe | mail | phone | mobile | clock | instagram. href makes the item a link.
 export const footer = {
   contact: [
-    { icon: 'pin', label: 'نشانی', value: 'قم، خیابان سمیه، خیابان معلم شرقی، مجتمع عمرانیه، طبقه اول، واحد ۱۱۹', wide: true },
+    { icon: 'pin', label: 'نشانی', value: 'قم، خیابان معلم شرقی، مجتمع عمرانیه، طبقه اول اداری، واحد ۱۱۹', wide: true },
     { icon: 'mail', label: 'ایمیل', value: 'camac.elevator@gmail.com', href: 'mailto:camac.elevator@gmail.com' },
     { icon: 'phone', label: 'تلفن', value: '025 - 37732264', href: 'tel:+982537732264' },
     { icon: 'mobile', label: 'موبایل', value: '0912 351 63 14', href: 'tel:+989123516314' },

@@ -16,7 +16,7 @@ const ASSEMBLED_AT = 0.985;
 // Shared type and color treatment for Hero and assembly StrokeText.
 const STROKE_FILL = '#FFFFFF';
 const STROKE_OUTLINE = '#555B5E';
-const STROKE_WEIGHT = 300;
+const STROKE_WEIGHT = 400;
 const STROKE_WIDTH = 0.6;
 const HERO_STROKE_SIZE = 19;
 const ASSEMBLY_STROKE_SIZE = 17;
@@ -293,7 +293,7 @@ export default function Site({ cabin, heroReady = false }) {
                 fontSize={ASSEMBLY_STROKE_SIZE}
                 fontWeight={STROKE_WEIGHT}
                 letterSpacing={0}
-                style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
               />
             </div>
           </div>
@@ -303,10 +303,10 @@ export default function Site({ cabin, heroReady = false }) {
         <div className="hero-brand" dir="ltr">
           <div className={`hero-brand-lockup ${brandOn ? 'is-on' : ''}`} aria-hidden={!brandOn}>
             <div className="hero-logo">
-              <img className="hero-logo-img" src="/brand/logo.webp" alt="" width="56" height="56" />
+              <img className="hero-logo-img" src="/brand/logo-mark.webp" alt="" width="56" height="56" decoding="async" />
               <span className="hero-word">C<span className="a">A</span>MAC</span>
             </div>
-            <div className="hero-tag" dir="rtl">شروع از ۱۳۹۵</div>
+            <div className="hero-tag" dir="rtl">شروع از ۱۳۹۳</div>
           </div>
           {heroReady && heroStrokeStarted && (
             <div
@@ -331,7 +331,7 @@ export default function Site({ cabin, heroReady = false }) {
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
                   letterSpacing={0}
-                  style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                  style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
                 />
               </div>
               <div className="camac-stroke-line" aria-hidden="true">
@@ -349,7 +349,7 @@ export default function Site({ cabin, heroReady = false }) {
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
                   letterSpacing={0}
-                  style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                  style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
                 />
               </div>
               <div className="camac-stroke-line" aria-hidden="true">
@@ -367,13 +367,13 @@ export default function Site({ cabin, heroReady = false }) {
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
                   letterSpacing={0}
-                  style={{ fontFamily: "'Estedad', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                  style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
                 />
               </div>
             </div>
           )}
           <div className={`hero-address ${brandOn ? 'is-on' : ''}`} dir="rtl" aria-hidden={!brandOn}>
-            قم، خیابان سمیه، خیابان معلم شرقی، مجتمع عمرانیه، طبقه اول، واحد ۱۱۹
+            قم، خیابان معلم شرقی، مجتمع عمرانیه، طبقه اول اداری، واحد ۱۱۹
           </div>
         </div>
 
@@ -417,7 +417,7 @@ export default function Site({ cabin, heroReady = false }) {
 
       <footer id="contact" className="sfooter interactive">
         <div className="sfooter-inner">
-          <img className="sfooter-logo" src="/brand/logo.webp" alt={brand.name} width="110" height="110" />
+          <img className="sfooter-logo" src="/brand/logo.webp" alt={brand.name} width="110" height="110" decoding="async" />
 
           <ul className="sfooter-contact">
             {footer.contact.map((row) => (

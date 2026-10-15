@@ -19,11 +19,19 @@ const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const smoothStep = (x) => x * x * (3 - 2 * x);
 
 /** Letter geometry at the given size, its top edge at y = 0 and centred on x = 0. */
-function letterGeometry(ch, size, depth) {
+function letterGeometry(ch, size, depth, mirrorHorizontally = false) {
   const g = new TextGeometry(ch, { font: FONT, size, depth, curveSegments: 6, bevelEnabled: false });
   g.computeBoundingBox();
   const bb = g.boundingBox;
   g.translate(-(bb.min.x + bb.max.x) / 2, -bb.max.y, 0);
+  if (mirrorHorizontally) {
+    // A half-turn around the glyph centre reverses C's opening without flipping its face normals.
+    g.computeBoundingBox();
+    const centreY = (g.boundingBox.min.y + g.boundingBox.max.y) / 2;
+    g.translate(0, -centreY, 0);
+    g.rotateZ(Math.PI);
+    g.translate(0, centreY, 0);
+  }
   g.computeBoundingBox();
   return g;
 }
@@ -126,7 +134,8 @@ export function createLaserSign({ fx, toWorld, panel, windowStart, windowEnd }) 
   const share = Math.max(1e-6, windowEnd - windowStart) / WORD.length;
 
   const letters = WORD.map((ch, i) => {
-    const geometry = letterGeometry(ch, k, depth);
+    const mirrorHorizontally = i === WORD.length - 1 && ch === 'C';
+    const geometry = letterGeometry(ch, k, depth, mirrorHorizontally);
     const uniforms = {
       uCut: { value: 0 },
       uTop: { value: 0 },
@@ -137,6 +146,8 @@ export function createLaserSign({ fx, toWorld, panel, windowStart, windowEnd }) 
     };
     const material = cutMaterial(uniforms);
     const mesh = new THREE.Mesh(geometry, material);
+    mesh.name = `CAMAC_letter_${i + 1}_${ch}`;
+    mesh.userData.mirroredHorizontally = mirrorHorizontally;
     const top = stackTop / 2 - i * PITCH * capH;
     mesh.position.y = top;
     mesh.visible = false;
