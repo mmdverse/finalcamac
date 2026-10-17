@@ -278,6 +278,130 @@ function FooterItem({ row }) {
   );
 }
 
+/** Draw a single glint stripe into a tiny canvas, then clip it with the logo's real alpha. */
+function HeroLogo({ active }) {
+  const imageRef = useRef(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    const image = imageRef.current;
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d', { alpha: true });
+    if (!active || !image || !canvas || !context) return undefined;
+
+    let frame = 0;
+    let running = false;
+    let disposed = false;
+    let startAt = 0;
+    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const ease = (value) => value * value * (3 - 2 * value);
+    const clear = () => context.clearRect(0, 0, canvas.width, canvas.height);
+
+    const resizeCanvas = () => {
+      const rect = canvas.parentElement?.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const width = Math.max(1, Math.round((rect?.width || image.clientWidth || 1) * dpr));
+      const height = Math.max(1, Math.round((rect?.height || image.clientHeight || 1) * dpr));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+    };
+
+    const draw = (now) => {
+      if (!running) return;
+      const width = canvas.width;
+      const height = canvas.height;
+      clear();
+
+      const cyclePhase = ((now - startAt) % 6400) / 6400;
+      const sweepStart = 0.18;
+      const sweepEnd = 0.57;
+      if (cyclePhase >= sweepStart && cyclePhase <= sweepEnd && width > 0 && height > 0) {
+        const rawProgress = (cyclePhase - sweepStart) / (sweepEnd - sweepStart);
+        const progress = ease(rawProgress);
+        const opacity = rawProgress < 0.12
+          ? 0.72 * ease(rawProgress / 0.12)
+          : rawProgress > 0.86
+            ? 0.72 * (1 - ease((rawProgress - 0.86) / 0.14))
+            : 0.72;
+        const halfBand = Math.max(3, width * 0.08);
+        const centerX = -halfBand + progress * (width + halfBand * 2);
+        const diagonal = height * 0.2;
+        const light = context.createLinearGradient(
+          centerX - diagonal - halfBand, 0,
+          centerX + diagonal + halfBand, height,
+        );
+        light.addColorStop(0, 'rgba(255,255,255,0)');
+        light.addColorStop(0.39, 'rgba(255,255,255,0)');
+        light.addColorStop(0.46, 'rgba(255,242,200,0.12)');
+        light.addColorStop(0.5, 'rgba(255,255,255,0.86)');
+        light.addColorStop(0.54, 'rgba(255,220,136,0.32)');
+        light.addColorStop(0.63, 'rgba(255,255,255,0)');
+        light.addColorStop(1, 'rgba(255,255,255,0)');
+
+        context.save();
+        context.globalCompositeOperation = 'source-over';
+        context.globalAlpha = opacity;
+        context.fillStyle = light;
+        context.fillRect(0, 0, width, height);
+        // Destination-in retains the sheen only where the source logo has nonzero alpha.
+        context.globalAlpha = 1;
+        context.globalCompositeOperation = 'destination-in';
+        context.drawImage(image, 0, 0, width, height);
+        context.restore();
+      }
+
+      frame = requestAnimationFrame(draw);
+    };
+
+    const start = () => {
+      if (disposed || running || motionQuery?.matches || !image.complete || !image.naturalWidth) return;
+      resizeCanvas();
+      clear();
+      startAt = performance.now();
+      running = true;
+      frame = requestAnimationFrame(draw);
+    };
+    const stop = () => {
+      running = false;
+      if (frame) cancelAnimationFrame(frame);
+      frame = 0;
+      clear();
+    };
+    const onMotionChange = () => {
+      if (motionQuery?.matches) stop();
+      else start();
+    };
+    const onImageLoad = () => start();
+    const observer = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(resizeCanvas)
+      : null;
+
+    if (image.complete && image.naturalWidth) start();
+    else image.addEventListener('load', onImageLoad, { once: true });
+    if (canvas.parentElement) observer?.observe(canvas.parentElement);
+    window.addEventListener('resize', resizeCanvas, { passive: true });
+    motionQuery?.addEventListener?.('change', onMotionChange);
+
+    return () => {
+      disposed = true;
+      stop();
+      image.removeEventListener('load', onImageLoad);
+      observer?.disconnect();
+      window.removeEventListener('resize', resizeCanvas);
+      motionQuery?.removeEventListener?.('change', onMotionChange);
+    };
+  }, [active]);
+
+  return (
+    <div className="hero-logo">
+      <img ref={imageRef} className="hero-logo-img" src="/brand/logo-fa.webp" alt="CAMAC Elevator" width="1000" height="888" decoding="async" />
+      <canvas ref={canvasRef} className="hero-logo-sheen" aria-hidden="true" />
+    </div>
+  );
+}
+
 export default function Site({ cabin, heroReady = false }) {
   const sequenceRef = useRef(null);
   const [showTop, setShowTop] = useState(false);
@@ -376,10 +500,7 @@ export default function Site({ cabin, heroReady = false }) {
         {/* Brand identity, the three-line Hero headline aligned directly under its tagline, then the address. */}
         <div className="hero-brand" dir="ltr">
           <div className={`hero-brand-lockup ${brandOn ? 'is-on' : ''}`} aria-hidden={!brandOn}>
-            <div className="hero-logo">
-              <img className="hero-logo-img" src="/brand/logo-fa.webp" alt="CAMAC Elevator" width="1000" height="888" decoding="async" />
-              <span className="hero-logo-sheen" aria-hidden="true" />
-            </div>
+            <HeroLogo active={brandOn} />
             <div className="hero-tag" dir="rtl">شروع از ۱۳۹۳</div>
           </div>
           {heroReady && heroStrokeStarted && (
