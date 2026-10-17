@@ -1,7 +1,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { ContactShadows, useGLTF } from '@react-three/drei';
+import { ContactShadows, PerformanceMonitor, useGLTF } from '@react-three/drei';
 import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -46,10 +46,10 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
     <Canvas
       shadows
       frameloop={assembled ? 'demand' : 'always'}
-      dpr={isMobile ? [1, 1.15] : [1, 1.25]}
+      dpr={isMobile ? [1, 1.6] : [1, 1.5]}
       resize={{ debounce: 250, scroll: false }} // the mobile address bar resizes the page: do not redraw on every step
       gl={{
-        antialias: false,
+        antialias: true,
         toneMapping: THREE.ACESFilmicToneMapping,
         toneMappingExposure: 1.0,
         outputColorSpace: THREE.SRGBColorSpace,
@@ -62,6 +62,7 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
       }}
     >
       <Environment />
+      {act === 'hero' && <HeroDprGuard />}
       {/* Storyboard hero: owns the camera while act === 'hero'. */}
       <HeroScene cabin={cabin} skipCabin={skipModel} />
       {/* The studio (stage + cabin assembly) only shows in the site act. */}
@@ -94,6 +95,35 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
       <OrbitRig />
       <Post />
     </Canvas>
+  );
+}
+
+/** Start crisp; if the device actually dips, trade pixel density down temporarily instead. */
+function HeroDprGuard() {
+  const setDpr = useThree((state) => state.setDpr);
+  const declines = useRef(0);
+  const sharpDpr = isMobile ? 1.6 : 1.5;
+  const balancedDpr = isMobile ? 1.3 : 1.25;
+  const safeDpr = 1.15;
+
+  useEffect(() => () => setDpr(sharpDpr), [setDpr, sharpDpr]);
+
+  return (
+    <PerformanceMonitor
+      iterations={3}
+      ms={250}
+      threshold={0.67}
+      bounds={() => [48, 58]}
+      onDecline={() => {
+        if (store.act !== 'hero') return;
+        declines.current += 1;
+        setDpr(declines.current > 1 ? safeDpr : balancedDpr);
+      }}
+      onIncline={() => {
+        declines.current = 0;
+        if (store.act === 'hero') setDpr(sharpDpr);
+      }}
+    />
   );
 }
 
