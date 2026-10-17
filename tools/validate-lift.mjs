@@ -6,6 +6,7 @@ import * as THREE from 'three';
 import {
   applyLiftTravel,
   attachHeroCabin,
+  attachHeroMotor,
   createLiftRig,
   HERO_CABIN_FLOOR_CLEARANCE,
   HERO_LIFT_DISPLAY_SCALE,
@@ -19,6 +20,7 @@ const scaffoldDesktopPath = path.join(publicDir, 'models/camac-assembly.desktop.
 const scaffoldMobilePath = path.join(publicDir, 'models/camac-assembly.mobile.glb');
 const cabinDesktopPath = path.join(publicDir, 'models/cabin-pro-v6.desktop.glb');
 const cabinMobilePath = path.join(publicDir, 'models/cabin-pro-v6.mobile.glb');
+const heroMotorPath = path.join(publicDir, 'models/hero-motor.glb');
 
 function readGlbJson(filePath) {
   const bytes = fs.readFileSync(filePath);
@@ -120,6 +122,7 @@ const scaffoldDesktopJson = readGlbJson(scaffoldDesktopPath);
 const scaffoldMobileJson = readGlbJson(scaffoldMobilePath);
 const cabinDesktopJson = readGlbJson(cabinDesktopPath);
 const cabinMobileJson = readGlbJson(cabinMobilePath);
+const heroMotorJson = readGlbJson(heroMotorPath);
 
 assert.ok(scaffoldDesktopJson.extensionsRequired?.includes('KHR_draco_mesh_compression'), 'desktop scaffold uses local Draco compression');
 assert.ok(scaffoldMobileJson.extensionsRequired?.includes('KHR_draco_mesh_compression'), 'mobile scaffold uses local Draco compression');
@@ -129,11 +132,18 @@ assert.equal(scaffoldDesktopJson.nodes.filter((node) => node.name === '00 Strukt
 for (const name of ['00 Full Assembly', '00 Strukture Up', '0_Weight', '01_Weight Frame', '01_Weight System', 'مدل یوک بندی', ...['Rail T9-1', 'Rail T9-2']]) {
   assert.ok(scaffoldDesktopJson.nodes.some((node) => node.name === name), `named assembly part “${name}” is preserved`);
 }
+assert.equal(heroMotorJson.nodes.length, 1, 'hero motor GLB contains only the requested motor node');
+assert.equal(heroMotorJson.nodes[0].name, 'BM300-2', 'hero motor is the inspected BM300-2 node');
+assert.equal(heroMotorJson.meshes.length, 1, 'hero motor GLB contains no fixture or table meshes');
+assert.equal(heroMotorJson.meshes[0].primitives.length, 7, 'all seven BM300-2 material primitives are preserved');
+assert.ok(heroMotorJson.extensionsRequired?.includes('KHR_draco_mesh_compression'), 'hero motor uses local Draco compression');
+assert.equal(heroMotorJson.animations?.length || 0, 0, 'hero motor has no unnecessary animation clips');
 
 const scaffoldDesktopScene = buildBoundsProxy(scaffoldDesktopJson);
 const scaffoldMobileScene = buildBoundsProxy(scaffoldMobileJson);
 const cabinDesktopScene = buildBoundsProxy(cabinDesktopJson);
 const cabinMobileScene = buildBoundsProxy(cabinMobileJson);
+const heroMotorScene = buildBoundsProxy(heroMotorJson);
 const scaffoldDesktopBounds = sceneBounds(scaffoldDesktopScene);
 const scaffoldMobileBounds = sceneBounds(scaffoldMobileScene);
 const cabinDesktopBounds = sceneBounds(cabinDesktopScene);
@@ -156,6 +166,7 @@ assertClose(cabinSize.z, 1.372, 0.005, 'Cabin Pro depth remains in authored metr
 
 const rig = createLiftRig(scaffoldDesktopScene, PAL.yellow);
 const cabin = attachHeroCabin(rig, cabinDesktopScene);
+const heroMotor = attachHeroMotor(rig, heroMotorScene);
 rig.updateMatrixWorld(true, true);
 const car = rig.userData.motionCar;
 const yoke = rig.userData.motionYoke;
@@ -169,6 +180,11 @@ const motionEnvelopeBounds = new THREE.Box3(
   new THREE.Vector3(...rig.userData.surfaceBounds.max),
 );
 const cabinRestBounds = new THREE.Box3().setFromObject(cabin);
+const heroMotorRestBounds = new THREE.Box3().setFromObject(heroMotor);
+const motorSupportBounds = new THREE.Box3(
+  new THREE.Vector3(...rig.userData.heroMotorSupportBounds.min),
+  new THREE.Vector3(...rig.userData.heroMotorSupportBounds.max),
+);
 const yokeRestBounds = new THREE.Box3().setFromObject(yoke);
 const counterweightRestBounds = new THREE.Box3().setFromObject(counterweight);
 
@@ -176,6 +192,14 @@ assert.equal(rig.userData.motionName, 'Hero_Moving_Car');
 assert.equal(yoke.name, 'مدل_یوک_بندی');
 assert.equal(yoke.parent, car, 'authored yoke stays on the moving-car pivot');
 assert.equal(cabin.parent, car, 'Cabin Pro is mounted on the moving-car pivot');
+assert.equal(heroMotor.name, 'Hero_BM300-2');
+assert.equal(heroMotor.parent, rig, 'BM300-2 is fixed to the scaffold, not the moving cabin car');
+assertClose(heroMotorRestBounds.min.y, motorSupportBounds.max.y, 1e-5, 'BM300-2 lower face is seated on the CAD motor-support surface');
+assertClose(rig.userData.heroMotorMountSurfaceY, motorSupportBounds.max.y, 1e-9, 'motor mount uses the named upper support rails');
+assert.ok(heroMotorRestBounds.min.x >= fixedFrameBounds.min.x - 0.02, 'motor stays within the scaffold width');
+assert.ok(heroMotorRestBounds.max.x <= fixedFrameBounds.max.x + 0.02, 'motor stays within the scaffold width');
+assert.ok(heroMotorRestBounds.min.z >= fixedFrameBounds.min.z - 0.02, 'motor stays within the scaffold depth');
+assert.ok(heroMotorRestBounds.max.z <= fixedFrameBounds.max.z + 0.02, 'motor stays within the scaffold depth');
 assert.equal(counterweight.name, 'Hero_Moving_Counterweight');
 assert.equal(counterweight.children[0].name, '0_Weight', 'both counterweight subassemblies travel together');
 assert.ok(rig.userData.cabinFitsFrame, 'the cabin bounds fit inside the fixed scaffold at the high stop');
@@ -194,7 +218,10 @@ rig.updateMatrixWorld(true, true);
 const lowerCabinBounds = new THREE.Box3().setFromObject(cabin);
 const lowerYokeBounds = new THREE.Box3().setFromObject(yoke);
 const raisedWeightBounds = new THREE.Box3().setFromObject(counterweight);
+const motorAfterTravelBounds = new THREE.Box3().setFromObject(heroMotor);
 assertClose(lowerCabinBounds.min.y - homeCabinBounds.min.y, -HERO_LIFT_MOTION.travelMeters, 1e-5, 'car travels down by the configured world distance');
+assertClose(motorAfterTravelBounds.min.y, heroMotorRestBounds.min.y, 1e-9, 'fixed BM300-2 does not travel with the car');
+assertClose(motorAfterTravelBounds.max.y, heroMotorRestBounds.max.y, 1e-9, 'fixed BM300-2 stays on the scaffold');
 assertClose(raisedWeightBounds.min.y - homeWeightBounds.min.y, HERO_LIFT_MOTION.travelMeters, 1e-5, 'counterweight travels up by the same world distance');
 assert.ok(lowerCabinBounds.min.y >= HERO_LIFT_MOTION.surfaceY, 'cabin clears the plaza at the lower stop');
 assert.ok(lowerYokeBounds.min.y >= HERO_LIFT_MOTION.surfaceY - 0.005, 'moving yoke clears the plaza at the lower stop');
@@ -221,5 +248,6 @@ approx(liftTravelAt(12), 0);
 console.log('PASS: desktop/mobile scaffold GLBs retain the full named CAD hierarchy and matching 1.987 × 7.915 × 1.714 m bounds.');
 console.log('PASS: Cabin Pro desktop/mobile bounds match at 1.42 × 4.031 × 1.372 m and fit on the T9 rail axis.');
 console.log(`PASS: ${rig.userData.recoloredMaterials} shared source-green scaffold material(s) are recolored CAMAC yellow; fixed scaffold rests on the plaza.`);
+console.log('PASS: extracted Draco BM300-2 only (1 node, 1 mesh, 7 primitives) is seated on the named upper motor supports and stays fixed.');
 console.log('PASS: cabin and authored yoke descend together 2.4 m while the counterweight rises 2.4 m, with both stops inside the frame.');
 console.log('PASS: the bounded 12 s down/dwell/up cycle is smooth and resets both moving pivots.');

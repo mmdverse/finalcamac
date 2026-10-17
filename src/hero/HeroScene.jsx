@@ -6,16 +6,17 @@ import { store } from '../lib/store';
 import { sampleCameraPath } from '../lib/cameraMath';
 import { HERO_CAMERA, HERO_ATMO, HERO_SECONDS, HERO_STORYBOARD_SECONDS, HERO_HANDOFF_AT, PAL } from './heroData';
 import { liftTravelAt } from './liftMotion';
-import { applyLiftTravel, attachHeroCabin, createLiftRig } from './liftModel';
+import { applyLiftTravel, attachHeroCabin, attachHeroMotor, createLiftRig } from './liftModel';
 import { pickModelUrl } from '../lib/modelQuality';
 
-// Hero assembly and cabin GLBs are Draco-compressed; serve the local decoder used by the studio viewer.
+// Hero assembly, cabin, and isolated motor GLBs are Draco-compressed; use the local decoder.
 useGLTF.setDecoderPath('/draco/gltf/');
 
 const HERO_SCAFFOLD_MODEL = Object.freeze({
   desktop: '/models/camac-assembly.desktop.glb',
   mobile: '/models/camac-assembly.mobile.glb',
 });
+const HERO_MOTOR_MODEL = '/models/hero-motor.glb';
 
 /**
  * The storyboard, rebuilt as a real 3D environment (not slides, not video).
@@ -25,8 +26,8 @@ const HERO_SCAFFOLD_MODEL = Object.freeze({
  *
  * Beats (see heroData.js): fog+particles -> line network -> wireframe city ->
  * open plaza and surface-mounted elevator -> yellow rings -> close passes -> wide brand frame.
- * The 7.9 m scaffold rests on the plaza; Cabin Pro seats on its guide-rail axis, while the car
- * yoke and counterweight travel in opposite directions along the GLB's authored Y axis.
+ * The 7.9 m scaffold rests on the plaza; BM300-2 seats on its named fixed motor supports,
+ * while Cabin Pro and the car yoke travel on the guide-rail axis against the counterweight.
  */
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -511,20 +512,27 @@ function HeroLift({ rigRef, cabin, skipCabin }) {
 }
 
 function HeroLiftFrame({ rigRef }) {
-  const { scene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
-  const rig = useMemo(() => createLiftRig(scene, PAL.yellow), [scene]);
+  const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
+  const { scene: motorScene } = useGLTF(HERO_MOTOR_MODEL);
+  const rig = useMemo(() => {
+    const assembledRig = createLiftRig(liftScene, PAL.yellow);
+    attachHeroMotor(assembledRig, motorScene);
+    return assembledRig;
+  }, [liftScene, motorScene]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
-/** Load the selected scaffold tier and mount a pristine Cabin Pro clone on its moving car. */
+/** Load the selected scaffold tier and mount the Cabin Pro, fixed motor, and moving car. */
 function HeroLiftWithCabin({ rigRef, cabin }) {
   const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
   const { scene: cabinScene } = useGLTF(pickModelUrl(cabin.model));
+  const { scene: motorScene } = useGLTF(HERO_MOTOR_MODEL);
   const rig = useMemo(() => {
     const assembledRig = createLiftRig(liftScene, PAL.yellow);
     attachHeroCabin(assembledRig, cabinScene);
+    attachHeroMotor(assembledRig, motorScene);
     return assembledRig;
-  }, [liftScene, cabinScene]);
+  }, [liftScene, cabinScene, motorScene]);
   return <primitive object={rig} ref={rigRef} />;
 }
 

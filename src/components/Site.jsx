@@ -377,8 +377,7 @@ export default function Site({ cabin, heroReady = false }) {
         <div className="hero-brand" dir="ltr">
           <div className={`hero-brand-lockup ${brandOn ? 'is-on' : ''}`} aria-hidden={!brandOn}>
             <div className="hero-logo">
-              <img className="hero-logo-img" src="/brand/logo-mark.webp" alt="" width="947" height="693" decoding="async" />
-              <span className="hero-word">C<span className="a">A</span>MAC</span>
+              <img className="hero-logo-img" src="/brand/logo-fa.webp" alt="CAMAC Elevator" width="1000" height="888" decoding="async" />
             </div>
             <div className="hero-tag" dir="rtl">شروع از ۱۳۹۳</div>
           </div>
@@ -491,7 +490,7 @@ export default function Site({ cabin, heroReady = false }) {
 
       <footer id="contact" className="sfooter interactive">
         <div className="sfooter-inner">
-          <img className="sfooter-logo" src="/brand/logo-inverse.webp" alt={brand.name} width="1264" height="1082" decoding="async" />
+          <img className="sfooter-logo" src="/brand/logo-en.webp" alt={brand.name} width="1000" height="759" decoding="async" />
 
           <ul className="sfooter-contact">
             {footer.contact.map((row) => (

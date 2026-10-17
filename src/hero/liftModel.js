@@ -193,6 +193,71 @@ export function createLiftRig(sourceScene, paletteYellow) {
   return rig;
 }
 
+/** Mount only the extracted BM300-2 motor on the scaffold's named upper support rails. */
+export function attachHeroMotor(rig, sourceMotorScene) {
+  if (!rig) throw new Error('Hero scaffold is required for the motor mount');
+  if (!sourceMotorScene) throw new Error('BM300-2 GLB scene is required for the Hero motor mount');
+  if (rig.userData.heroMotor) return rig.userData.heroMotor;
+
+  const motorNode = sourceMotorScene.getObjectByName('BM300-2');
+  if (!motorNode) throw new Error('BM300-2 GLB: the extracted motor node “BM300-2” was not found');
+
+  // The scaffold's CAD-authored “4mm Motor …” rails define the fixed upper mount.
+  // Use their actual top surface instead of a guessed world-space offset.
+  const motorSupportBounds = new THREE.Box3().makeEmpty();
+  rig.traverse((object) => {
+    if (!object.name.startsWith('4mm_Motor')) return;
+    motorSupportBounds.expandByObject(object);
+  });
+  if (motorSupportBounds.isEmpty()) {
+    throw new Error('Hero scaffold: no CAD-authored “4mm Motor …” support parts were found');
+  }
+
+  const motor = sourceMotorScene.clone(true);
+  motor.name = 'Hero_BM300-2';
+  motor.traverse((object) => {
+    if (!object.isMesh) return;
+    object.castShadow = true;
+    object.receiveShadow = true;
+  });
+  rig.add(motor);
+  rig.updateMatrixWorld(true, true);
+
+  const motorBeforeMount = objectBounds(motor, 'BM300-2 motor');
+  const scale = rig.getWorldScale(new THREE.Vector3()).y;
+  if (!(scale > 0)) throw new Error('Hero scaffold has an invalid scale for the BM300-2 mount');
+  // The motor stays on the fixed scaffold (not the moving cabin car). Its authored X/Z
+  // placement is preserved; only its lower face is seated on the support rails' top face.
+  motor.position.y += (motorSupportBounds.max.y - motorBeforeMount.min.y) / scale;
+  rig.updateMatrixWorld(true, true);
+
+  const motorBounds = objectBounds(motor, 'mounted BM300-2 motor');
+  const priorSurfaceBounds = rig.userData.surfaceBounds;
+  const surfaceBounds = priorSurfaceBounds
+    ? new THREE.Box3(
+      new THREE.Vector3(...priorSurfaceBounds.min),
+      new THREE.Vector3(...priorSurfaceBounds.max),
+    )
+    : new THREE.Box3().makeEmpty();
+  surfaceBounds.union(motorBounds);
+
+  rig.userData.heroMotor = motor;
+  rig.userData.heroMotorBounds = {
+    min: motorBounds.min.toArray(),
+    max: motorBounds.max.toArray(),
+  };
+  rig.userData.heroMotorSupportBounds = {
+    min: motorSupportBounds.min.toArray(),
+    max: motorSupportBounds.max.toArray(),
+  };
+  rig.userData.heroMotorMountSurfaceY = motorSupportBounds.max.y;
+  rig.userData.surfaceBounds = {
+    min: surfaceBounds.min.toArray(),
+    max: surfaceBounds.max.toArray(),
+  };
+  return motor;
+}
+
 /** Mount an unscaled Cabin Pro clone inside the scaffold and on the car's lower yoke. */
 export function attachHeroCabin(rig, sourceCabinScene) {
   const movingCar = rig?.userData.motionCar;

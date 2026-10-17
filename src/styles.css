@@ -354,7 +354,11 @@ body { background: var(--bg); }
   border-top: 1px solid rgba(224, 168, 0, .35);
 }
 .sfooter-inner { display: flex; flex-direction: column; align-items: center; gap: 36px; }
-.sfooter-logo { display: block; width: 110px; height: 110px; object-fit: contain; background: none; padding: 0; }
+.sfooter-logo {
+  display: block; width: min(240px, 64vw); height: auto; object-fit: contain;
+  padding: 9px 11px; border-radius: 4px; background: rgba(255, 255, 255, .9);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, .12);
+}
 .sfooter-contact {
   list-style: none; margin: 0; padding: 0;
   display: flex; flex-direction: column; align-items: center; gap: 14px;
@@ -476,17 +480,11 @@ a.sfooter-item:hover { color: #e0a800; }
 .hero-brand > .camac-hero-message .camac-stroke-line { justify-content: flex-start; }
 .hero-brand > .camac-hero-message .stroke-text__stroke,
 .hero-brand > .camac-hero-message .stroke-text__fill { text-anchor: middle; }
-.hero-logo { display: flex; align-items: center; gap: 16px; }
-.hero-logo svg { width: clamp(30px, 3.4vw, 46px); height: auto; display: block; }
+.hero-logo { display: flex; align-items: center; gap: 0; }
 .hero-logo-img {
-  width: clamp(46px, 4.6vw, 60px); height: auto; display: block;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, .4));
+  width: clamp(146px, 18vw, 220px); height: auto; display: block;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, .48));
 }
-.hero-word {
-  font-size: clamp(30px, 4vw, 52px); font-weight: 600; letter-spacing: .12em;
-  color: #f4f6f7; line-height: 1;
-}
-.hero-word .a { color: #f2b632; }
 .hero-tag {
   margin-top: 14px; font-size: clamp(11px, 1vw, 13px); letter-spacing: .02em;
   color: #c9ced2; direction: rtl; text-align: left; unicode-bidi: plaintext;
@@ -534,9 +532,7 @@ html.is-hero-transitioning .hero-address { transition: none; }
 }
 @media (max-width: 640px) {
   .hero-brand { left: 6vw; }
-  .hero-logo { gap: 10px; }
-  .hero-logo-img { width: 38px; }
-  .hero-word { font-size: 26px; letter-spacing: .1em; }
+  .hero-logo-img { width: clamp(138px, 42vw, 176px); }
   .hero-tag { margin-top: 10px; font-size: 10px; letter-spacing: .01em; }
   .hero-address { width: min(270px, 70vw); margin-top: 3px; font-size: 9px; }
   .hero-brand > .camac-hero-message { width: min(270px, 70vw); margin-top: 3px; }
