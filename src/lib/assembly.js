@@ -380,11 +380,13 @@ export function createAssembly({ outer, scene, phases, fx }) {
     }
     const glowTargets = (Array.isArray(m.material) ? m.material : [m.material]).filter((mt) => mt && mt.emissive);
 
-    records.push({
+    const rec = {
       m,
       rest: m.position.clone(),
       restScale: m.scale.clone(),
       restQuat: m.quaternion.clone(),
+      animQuat: new THREE.Quaternion(),
+      trackPosition: new THREE.Vector3(),
       outerCenter: info.center.clone(),
       spin: !isPop && info.size >= SMALL ? (idx % 2 ? 1 : -1) * (1.1 + Math.random() * 0.4) : 0,
       dir,
@@ -415,9 +417,12 @@ export function createAssembly({ outer, scene, phases, fx }) {
       bounce: item === lastItem ? 0.09 : Math.min(0.05, 0.01 + info.size * 0.025), // the last piece rebounds clearly on landing
       glowTargets,
       liveT: 0,
-    });
+      lastT: -1,
+    };
+    rec.track = () => (rec.liveT >= 1 ? null : rec.m.getWorldPosition(rec.trackPosition));
+    records.push(rec);
 
-    recOf.set(item, records[records.length - 1]);
+    recOf.set(item, rec);
     m.visible = false;
   });
 
@@ -512,9 +517,15 @@ export function createAssembly({ outer, scene, phases, fx }) {
     return null;
   };
 
+  let previousProgress = Number.NaN;
+
   function update(progress, dt = 0, idle = false) {
+    const progressChanged = progress !== previousProgress;
+    previousProgress = progress;
     laser?.update(progress, dt);
-    for (const st of statics) st.m.visible = progress >= st.at;
+    if (progressChanged) {
+      for (const st of statics) st.m.visible = progress >= st.at;
+    }
     let zoneNow = null;
     for (const rec of records) {
       // One timeline for every scroll speed: auto-scroll and manual scroll place each piece identically,
@@ -523,9 +534,11 @@ export function createAssembly({ outer, scene, phases, fx }) {
         ? clamp01((progress - rec.start - rec.trainOff) / rec.trainW)
         : clamp01((progress - rec.start) / rec.dur);
       if (rec.zone && t > 0 && rec.motion !== 'train') zoneNow = rec.zone; // the zone of the latest big piece that has started
+      if (t === rec.lastT) continue; // settled/hidden pieces keep their transform until progress reaches them again
+      rec.lastT = t;
       const m = rec.m;
       rec.liveT = t;
-      const track = () => (rec.liveT >= 1 ? null : m.getWorldPosition(new THREE.Vector3()));
+      const track = rec.track;
 
       // The camera starts with the piece as it appears and tracks it until it lands.
       // Per-piece focus only during manual scrolling; the auto-scroll keeps the zone view.
@@ -561,8 +574,8 @@ export function createAssembly({ outer, scene, phases, fx }) {
         const f = 1 - easeInOut(t); // eased path: slow start, gentle middle, slow landing
         m.position.copy(rec.rest).addScaledVector(rec.dir, f);
         // big pieces turn on their own axis while flying in
-        const q = new THREE.Quaternion().setFromAxisAngle(Y_AXIS, rec.spin * f);
-        m.quaternion.copy(rec.restQuat).premultiply(q);
+        rec.animQuat.setFromAxisAngle(Y_AXIS, rec.spin * f);
+        m.quaternion.copy(rec.restQuat).premultiply(rec.animQuat);
         if (t >= 0.95) {
           // small rebound after contact: the piece settles instead of stopping dead
           const u = clamp01((t - 0.95) / 0.05);
@@ -637,7 +650,7 @@ export function createAssembly({ outer, scene, phases, fx }) {
       const cutStart = T0 + (merged.length - 1) * slot + slot * 0.3; // the word is cut right after the previous piece
       laser = createLaserSign({
         fx,
-        toWorld: (v) => outer.localToWorld(v.clone()),
+        toWorld: (v, out) => outer.localToWorld(out.copy(v)),
         panel: {
           cx: (b.min.x + b.max.x) / 2,
           cy: (b.min.y + b.max.y) / 2,
@@ -661,7 +674,17 @@ export function createAssembly({ outer, scene, phases, fx }) {
   // a short pause after the last landing: the camera holds while the piece settles, then frames the cabin
   const completeAt = Math.min(1, Math.max(pieceEnd + slot * 0.3, laserEnd));
   const share = toScroll(completeAt);
-  return { update, phases: phaseInfo, count: records.length, scrollMap: { toScroll, toProgress }, stops, firstLandingAt, completeAt, share };
+  return {
+    update,
+    isLaserActive: (progress) => !!laser && laser.isActive(progress),
+    phases: phaseInfo,
+    count: records.length,
+    scrollMap: { toScroll, toProgress },
+    stops,
+    firstLandingAt,
+    completeAt,
+    share,
+  };
 }
 
 /** Index of the phase that is active at `progress`. */

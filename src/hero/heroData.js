@@ -1,29 +1,29 @@
 /**
- * CAMAC hero — data extracted from the two storyboard boards, re-timed as a
- * 6 s descending one-take: the camera starts high above the plaza and glides
- * down while the world ignites around it (grid -> network -> wireframe city ->
- * open plaza -> surface-mounted lift, rings & skyline -> brand frame).
- *
- * t is seconds into the timed intro (0..6); it plays on load, then the frame
- * stays interactive (pointer parallax + click ripple).
+ * CAMAC hero — data extracted from the two storyboard boards. The authored beat sheet
+ * uses six seconds; playback now compresses it into a deliberate 4-second one-take.
+ * The camera begins high above the plaza and glides down while the world ignites around it.
  */
 
-export const HERO_SECONDS = 6;
+export const HERO_STORYBOARD_SECONDS = 6;
+export const HERO_SECONDS = 4;
+
+// Scroll fraction at which the hero world hands off to the studio scene.
+export const HERO_HANDOFF_AT = 0.55;
 
 /** Camera keyframes (world metres; the elevator stands at the origin on ground y = 0).
  *  The take makes a straight vertical drop toward the surface-mounted lift, then turns
  *  toward the shrine so the final frame reads: lift right, dome left. */
 export const HERO_CAMERA = [
-  { progress: 0.0 / 6, pos: [0, 26, 0.6], target: [0, 0, 0], fov: 55, linear: true }, // 90° top-down over the elevator
-  { progress: 1.15 / 6, pos: [0, 20.8, 0.6], target: [0, 0, 0], fov: 54, linear: true }, // constant-speed straight drop…
-  { progress: 2.3 / 6, pos: [0, 15.6, 0.6], target: [0, 0, 0], fov: 52, linear: true }, // …same vertical line…
-  { progress: 3.45 / 6, pos: [0, 10.4, 0.6], target: [0, 0, 0], fov: 50, linear: true }, // …no arc, no drift…
-  { progress: 4.6 / 6, pos: [0, 5.2, 0.6], target: [0, 0.3, 0], fov: 47 }, // …down toward the lift, then turn to the city
-  { progress: 5.3 / 6, pos: [0.8, 3.4, 6.6], target: [-1.8, 1.6, 0], fov: 43 },
-  { progress: 1.0, pos: [1.6, 2.5, 11.6], target: [-3.2, 2.3, 0], fov: 40 }, // lift right, dome left
+  { progress: 0.0 / HERO_STORYBOARD_SECONDS, pos: [0, 26, 0.6], target: [0, 0, 0], fov: 55, linear: true }, // 90° top-down over the elevator
+  { progress: 1.15 / HERO_STORYBOARD_SECONDS, pos: [0, 20.8, 0.6], target: [0, 0, 0], fov: 54, linear: true }, // steady vertical drop…
+  { progress: 2.3 / HERO_STORYBOARD_SECONDS, pos: [0, 15.6, 0.6], target: [0, 0, 0], fov: 52, linear: true }, // …same vertical line…
+  { progress: 3.45 / HERO_STORYBOARD_SECONDS, pos: [0, 10.4, 0.6], target: [0, 0, 0], fov: 50, linear: true }, // …no arc, no drift…
+  { progress: 4.6 / HERO_STORYBOARD_SECONDS, pos: [0, 5.2, 0.6], target: [0, 0.3, 0], fov: 47 }, // reach the lift, then turn to the city
+  { progress: 5.3 / HERO_STORYBOARD_SECONDS, pos: [0.8, 3.4, 6.6], target: [-1.8, 1.6, 0], fov: 43 },
+  { progress: 1.0, pos: [1.6, 2.5, 11.6], target: [-3.2, 2.3, 0], fov: 40 }, // final frame at 4 s: lift right, dome left
 ];
 
-/** Background / fog colour + range over the 6 s descent (dark -> dawn grey -> warm light). */
+/** Atmosphere stays on the six-second storyboard scale and maps to the shorter take. */
 export const HERO_ATMO = [
   { t: 0.0, color: '#2e3134', near: 6, far: 70 },
   { t: 1.5, color: '#565b61', near: 10, far: 100 },

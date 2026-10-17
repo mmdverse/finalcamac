@@ -24,6 +24,7 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
   const [bounds, setBounds] = useState(null);
   const partBoxesRef = useRef(new Map());
   const act = useStore((s) => s.act);
+  const assembled = useStore((s) => s.assembled);
 
   // QA mode (?nogl): no cabin GLB, so the loader dismisses right away.
   useEffect(() => {
@@ -44,10 +45,11 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
   return (
     <Canvas
       shadows
-      dpr={isMobile ? [1, 1.5] : [1, 2]}
+      frameloop={assembled ? 'demand' : 'always'}
+      dpr={isMobile ? [1, 1.15] : [1, 1.25]}
       resize={{ debounce: 250, scroll: false }} // the mobile address bar resizes the page: do not redraw on every step
       gl={{
-        antialias: true,
+        antialias: false,
         toneMapping: THREE.ACESFilmicToneMapping,
         toneMappingExposure: 1.0,
         outputColorSpace: THREE.SRGBColorSpace,
@@ -73,14 +75,15 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
             <CabinModel cabin={cabin} onReady={handleReady} />
           </Suspense>
         )}
-        {bounds && (
+        {bounds && assembled && (
           <ContactShadows
+            frames={1}
             position={[0, groundY + 0.002, 0]}
             opacity={0.5}
             scale={7}
             blur={2.6}
             far={3}
-            resolution={512}
+            resolution={384}
             color="#2a2620"
           />
         )}
@@ -160,6 +163,7 @@ function StageSet() {
     });
   }, [scene, ledMaterial]);
   useFrame((state) => {
+    if (store.act !== 'site') return;
     ledMaterial.uniforms.uTime.value = state.clock.elapsedTime;
   });
   return <primitive object={scene} receiveShadow />;
@@ -171,6 +175,7 @@ function StageSet() {
  */
 function ScanRing() {
   const ref = useRef();
+  const invalidate = useThree((state) => state.invalidate);
   const material = useMemo(
     () =>
       new THREE.ShaderMaterial({
@@ -195,7 +200,7 @@ function ScanRing() {
 
   useFrame((_, dt) => {
     const mesh = ref.current;
-    if (!mesh) return;
+    if (!mesh || store.act !== 'site') return;
     const p = store.progress;
     const active = p > 0.02 && p < 0.97;
     const e = Math.min(1, Math.max(0, (p - 0.02) / 0.9));
@@ -204,6 +209,7 @@ function ScanRing() {
     const target = active ? 0.9 : 0;
     material.uniforms.uOpacity.value += (target - material.uniforms.uOpacity.value) * (1 - Math.exp(-dt * 8));
     mesh.visible = material.uniforms.uOpacity.value > 0.003;
+    if (Math.abs(target - material.uniforms.uOpacity.value) > 0.003) invalidate();
   });
 
   return (
@@ -222,7 +228,7 @@ function Lights() {
         intensity={1.25}
         color="#fff4dc"
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[1024, 1024]}
         shadow-camera-left={-3}
         shadow-camera-right={3}
         shadow-camera-top={3}
@@ -242,7 +248,7 @@ function Lights() {
  * Once the cabin is complete (and nothing is selected), the visitor can turn it: orbit controls take the camera.
  */
 function OrbitRig() {
-  const { camera, gl } = useThree();
+  const { camera, gl, invalidate } = useThree();
   const controls = useMemo(() => {
     const c = new OrbitControls(camera, gl.domElement);
     c.enableDamping = true;
@@ -258,7 +264,14 @@ function OrbitRig() {
     gl.domElement.style.touchAction = 'pan-y';
     return c;
   }, [camera, gl]);
-  useEffect(() => () => controls.dispose(), [controls]);
+  useEffect(() => {
+    const onChange = () => invalidate();
+    controls.addEventListener('change', onChange);
+    return () => {
+      controls.removeEventListener('change', onChange);
+      controls.dispose();
+    };
+  }, [controls, invalidate]);
   useFrame(() => {
     const on = store.assembled && store.act !== 'hero';
     if (controls.enabled !== on) controls.enabled = on;
@@ -272,12 +285,21 @@ function OrbitRig() {
  * A click on a part (after assembly) focuses that part.
  */
 function CameraRig({ cabin, partBoxesRef }) {
-  const { camera, size } = useThree();
+  const { camera, size, invalidate } = useThree();
   const cur = useMemo(
     () => ({ pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 36, primed: false }),
     [],
   );
   const tmp = useMemo(() => ({ pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 36 }), []);
+  const scratch = useMemo(() => ({
+    pos: new THREE.Vector3(),
+    target: new THREE.Vector3(),
+    drift: new THREE.Vector3(),
+    rel: new THREE.Vector3(),
+    dir: new THREE.Vector3(),
+    camPos: new THREE.Vector3(),
+    look: new THREE.Vector3(),
+  }), []);
   const shakeOffset = useMemo(() => new THREE.Vector3(), []);
   // Idle hold: when scrolling stops, the camera stays where it is with a slow drift,
   // instead of returning to the scroll path.
@@ -296,8 +318,8 @@ function CameraRig({ cabin, partBoxesRef }) {
     const aspect = size.width / Math.max(1, size.height);
     const narrow = Math.min(1, Math.max(0, (1.1 - aspect) / 0.6)); // 0 at landscape, 1 at portrait
     const pull = 1 + narrow * 0.55;
-    let wantPos = tmp.pos.clone().sub(ORIGIN).multiplyScalar(pull).add(ORIGIN);
-    let wantTarget = tmp.target.clone();
+    const wantPos = scratch.pos.copy(tmp.pos).sub(ORIGIN).multiplyScalar(pull).add(ORIGIN);
+    const wantTarget = scratch.target.copy(tmp.target);
     let wantFov = tmp.fov * (1 + narrow * 0.12);
 
     const now = store.progress;
@@ -311,13 +333,13 @@ function CameraRig({ cabin, partBoxesRef }) {
         hold.target = cur.target.clone();
       }
       const tt = state.clock.elapsedTime;
-      const drift = new THREE.Vector3(
+      scratch.drift.set(
         Math.sin(tt * 0.25) * 0.04,
         Math.sin(tt * 0.19 + 1) * 0.02,
         Math.cos(tt * 0.21) * 0.04,
       );
-      wantPos = hold.pos.clone().add(drift);
-      wantTarget = hold.target.clone().add(drift.clone().multiplyScalar(0.5));
+      wantPos.copy(hold.pos).add(scratch.drift);
+      wantTarget.copy(hold.target).addScaledVector(scratch.drift, 0.5);
       wantFov = cur.fov;
     } else {
       hold.pos = null;
@@ -329,8 +351,8 @@ function CameraRig({ cabin, partBoxesRef }) {
     // The laser: the camera follows the cutting front (in world space) as the word is cut.
     const laserCam = fx.laserView ? fx.laserView(store.progress) : null;
     if (laserCam) {
-      wantPos = laserCam.pos;
-      wantTarget = laserCam.target;
+      wantPos.copy(laserCam.pos);
+      wantTarget.copy(laserCam.target);
       wantFov = tmp.fov * (1 + narrow * 0.12);
     }
     if (fx.zone !== zt.zone) {
@@ -342,16 +364,17 @@ function CameraRig({ cabin, partBoxesRef }) {
     if (zoneMove) {
       zt.t = Math.min(1, zt.t + dt / 2.6);
       const e = zt.t * zt.t * zt.t * (zt.t * (zt.t * 6 - 15) + 10); // smootherstep: soft start and landing
-      wantPos = zt.from.clone().lerp(fx.zone.pos, e);
-      wantTarget = zt.fromT.clone().lerp(fx.zone.target, e);
+      wantPos.copy(zt.from).lerp(fx.zone.pos, e);
+      wantTarget.copy(zt.fromT).lerp(fx.zone.target, e);
       wantFov = tmp.fov * (1 + narrow * 0.12);
     }
 
     // Cinematic focus. 'wide': a big joint, the camera pulls back so the whole connection reads.
     // 'close': a small piece, the camera dollies in and orbits slowly around it.
+    const focus = fx.focus;
     let focusW = 0;
-    if (fx.focus) {
-      const f = fx.focus;
+    if (focus) {
+      const f = focus;
       f.t += dt;
       if (f.track) {
         const p = f.track();
@@ -365,30 +388,29 @@ function CameraRig({ cabin, partBoxesRef }) {
       if (f.t > end + 1.0) fx.focus = null;
       if (focusW > 0.001) {
         const u = Math.min(1, f.t / f.hold);
-        let camP;
+        let camP = null;
         let fov;
         if (f.mode === 'train') {
           // A fastener group: the camera stays where it is and only swings a little toward the group.
-          const rel = wantPos.clone().sub(wantTarget);
+          const rel = scratch.rel.copy(wantPos).sub(wantTarget);
           const toGroup = Math.atan2(f.pos.x - wantTarget.x, f.pos.z - wantTarget.z);
           const sw = THREE.MathUtils.clamp(toGroup - Math.atan2(rel.x, rel.z), -0.3, 0.3);
           rel.applyAxisAngle(UP, sw * focusW);
-          wantPos = wantTarget.clone().add(rel);
+          wantPos.copy(wantTarget).add(rel);
           wantTarget.lerp(f.pos, focusW * 0.6);
-          camP = null;
         } else if (f.mode === 'follow') {
           const swing = f.sweep ? Math.sin(f.t * 0.45) * f.sweep : 0;
-          const dir = f.dir.clone().applyAxisAngle(UP, swing);
-          camP = f.pos.clone().addScaledVector(dir, f.dist);
+          const dir = scratch.dir.copy(f.dir).applyAxisAngle(UP, swing);
+          camP = scratch.camPos.copy(f.pos).addScaledVector(dir, f.dist);
           camP.y += 0.1;
           fov = 32;
         } else if (f.mode === 'wide') {
           const dist = THREE.MathUtils.lerp(f.dist * 0.9, f.dist * 1.15, u);
-          camP = f.pos.clone().addScaledVector(f.dir, dist);
+          camP = scratch.camPos.copy(f.pos).addScaledVector(f.dir, dist);
           fov = 36;
         } else {
-          const dir = f.dir.clone().applyAxisAngle(UP, f.angle0 + u * 0.35);
-          camP = f.pos.clone().addScaledVector(dir, f.dist);
+          const dir = scratch.dir.copy(f.dir).applyAxisAngle(UP, f.angle0 + u * 0.35);
+          camP = scratch.camPos.copy(f.pos).addScaledVector(dir, f.dist);
           camP.y += 0.1;
           fov = 30;
         }
@@ -400,7 +422,6 @@ function CameraRig({ cabin, partBoxesRef }) {
       }
     }
 
-
     if (!cur.primed) {
       cur.pos.copy(wantPos);
       cur.target.copy(wantTarget);
@@ -411,8 +432,8 @@ function CameraRig({ cabin, partBoxesRef }) {
     // laser), then the visitor can turn the cabin.
     if (store.assembled) {
       sampleCameraPath(cabin.cameraPath, 1, ORIGIN, 1, finalTmp);
-      wantPos = finalTmp.pos.clone().sub(ORIGIN).multiplyScalar(pull).add(ORIGIN);
-      wantTarget = finalTmp.target.clone();
+      wantPos.copy(finalTmp.pos).sub(ORIGIN).multiplyScalar(pull).add(ORIGIN);
+      wantTarget.copy(finalTmp.target);
       wantFov = finalTmp.fov * (1 + narrow * 0.12);
       if (!hold.settled && cur.pos.distanceTo(wantPos) < 0.03) hold.settled = true;
     } else {
@@ -438,14 +459,17 @@ function CameraRig({ cabin, partBoxesRef }) {
     const orbitOwns = store.assembled && hold.settled; // once the final framing is reached, orbit controls own the camera
     if (!orbitOwns) {
       camera.position.copy(cur.pos).add(shakeOffset);
-      camera.lookAt(cur.target.clone().add(shakeOffset.clone().multiplyScalar(2.5)));
+      camera.lookAt(scratch.look.copy(cur.target).addScaledVector(shakeOffset, 2.5));
     }
-    fx.camPos = camera.position.clone();
+    if (!fx.camPos) fx.camPos = new THREE.Vector3();
+    fx.camPos.copy(camera.position);
 
     if (!orbitOwns && Math.abs(camera.fov - cur.fov) > 0.01) {
       camera.fov = cur.fov;
       camera.updateProjectionMatrix();
     }
+    // In demand mode, keep rendering only while the completion framing or impact/focus easing is active.
+    if (store.assembled && (!hold.settled || focus || fx.bigShake > 0.003 || fx.shake > 0.003)) invalidate();
   });
 
   return null;
@@ -458,6 +482,9 @@ const smoothStep = (x) => {
 
 /** Bloom for sparks and bright highlights; soft vignette for a cinematic frame. */
 function Post() {
+  const isHero = useStore((s) => s.act === 'hero');
+  // Render the four-second hero directly; the studio-only post stack is too costly during motion.
+  if (isHero) return null;
   if (isMobile) {
     return (
       <EffectComposer multisampling={0}>
@@ -466,7 +493,7 @@ function Post() {
     );
   }
   return (
-    <EffectComposer multisampling={4}>
+    <EffectComposer multisampling={2}>
         <Bloom intensity={0.32} luminanceThreshold={0.92} luminanceSmoothing={0.2} mipmapBlur />
       <Vignette offset={0.3} darkness={0.4} />
     </EffectComposer>

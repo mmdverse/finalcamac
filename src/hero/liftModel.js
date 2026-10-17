@@ -2,158 +2,237 @@ import * as THREE from 'three';
 import { HERO_LIFT_MOTION } from './liftMotion.js';
 
 export const HERO_LIFT_DISPLAY_SCALE = 0.65;
+export const HERO_CABIN_FLOOR_CLEARANCE = 0.03;
+
+// Three.js sanitizes whitespace in GLTF node names to underscores during parsing.
+const ASSEMBLY_NAME = '00_Full_Assembly';
+const YOKE_NAME = 'مدل_یوک_بندی';
+const WEIGHT_NAME = '0_Weight';
+const RAIL_NAMES = ['Rail_T9-1', 'Rail_T9-2'];
+const BOX_EPSILON = 1e-5;
 
 const isSourceGreen = (material) => {
   const color = material?.color;
   return Boolean(color && color.g > 0.78 && color.r < 0.18 && color.b < 0.18);
 };
 
-/** Clone, remove the shaft enclosure, and place the elevator assembly on the plaza. */
-export function createLiftRig(sourceScene, paletteYellow) {
-  const sourceAssembly = sourceScene.getObjectByName('00_Full_Assembly_CHB') || sourceScene;
-  const rig = sourceAssembly.clone(true);
-  const shaftWall = rig.getObjectByName('Wall_CHB-1');
-  if (!shaftWall?.parent) throw new Error('Chb.glb: shaft enclosure Wall_CHB-1 was not found');
-  shaftWall.parent.remove(shaftWall);
+function requireObject(root, name, description) {
+  const object = root.getObjectByName(name);
+  if (!object) throw new Error(`Full Assembly GLB: ${description} “${name}” was not found`);
+  return object;
+}
 
-  const movingCar = rig.getObjectByName('01_Carsling_CHB');
-  if (!movingCar) throw new Error('Chb.glb: moving assembly 01_Carsling_CHB was not found');
-  const movingYoke = rig.getObjectByName('01_Yok_CHB');
-  if (!movingYoke) throw new Error('Chb.glb: upper moving yoke 01_Yok_CHB was not found');
+function objectBounds(object, description) {
+  object.updateWorldMatrix(true, true);
+  const bounds = new THREE.Box3().setFromObject(object);
+  if (bounds.isEmpty()) throw new Error(`Full Assembly GLB: ${description} has no renderable bounds`);
+  return bounds;
+}
 
-  // The upper yoke is exported at the shaft head, separate from the car. Re-seat it on the
-  // car's upper cross-beam, then parent it to the complete carsling so both pieces travel together.
-  rig.updateMatrixWorld(true, true);
-  const carRestBounds = new THREE.Box3().setFromObject(movingCar);
-  const motionCarFrameCenterLocal = movingCar.worldToLocal(carRestBounds.getCenter(new THREE.Vector3())).toArray();
-  const yokeSourceBounds = new THREE.Box3().setFromObject(movingYoke);
-  const yokeOriginalTopY = yokeSourceBounds.max.y;
-  const yokeAttachOffsetY = carRestBounds.max.y - yokeSourceBounds.min.y;
-  movingCar.attach(movingYoke);
-  movingCar.updateWorldMatrix(true, false);
-  const carLocalOrigin = movingCar.worldToLocal(new THREE.Vector3(0, 0, 0));
-  const yokeAttachOffsetLocal = movingCar.worldToLocal(new THREE.Vector3(0, yokeAttachOffsetY, 0)).sub(carLocalOrigin);
-  movingYoke.position.add(yokeAttachOffsetLocal);
-  movingCar.updateWorldMatrix(true, true);
+function boundsWithout(root, excludedGroups) {
+  const bounds = new THREE.Box3().makeEmpty();
+  root.traverse((object) => {
+    if (!object.isMesh) return;
+    let ancestor = object;
+    while (ancestor) {
+      if (excludedGroups.has(ancestor)) return;
+      ancestor = ancestor.parent;
+    }
+    bounds.expandByObject(object);
+  });
+  if (bounds.isEmpty()) throw new Error('Full Assembly GLB: fixed scaffold has no renderable bounds');
+  return bounds;
+}
 
-  const materialCopies = new Map();
+function styleMaterials(root, yellow) {
+  const copies = new Map();
   let recoloredMaterials = 0;
-  let recoloredMeshObjects = 0;
-  rig.traverse((object) => {
+  let recoloredMeshes = 0;
+
+  root.traverse((object) => {
     if (!object.isMesh) return;
     object.castShadow = true;
     object.receiveShadow = true;
-    const originals = Array.isArray(object.material) ? object.material : [object.material];
-    if (originals.some(isSourceGreen)) recoloredMeshObjects += 1;
+    const sourceMaterials = Array.isArray(object.material) ? object.material : [object.material];
+    if (sourceMaterials.some(isSourceGreen)) recoloredMeshes += 1;
 
     const cloneMaterial = (material) => {
-      if (!materialCopies.has(material)) {
+      if (!material) return material;
+      if (!copies.has(material)) {
         const copy = material.clone();
         if (isSourceGreen(copy)) {
-          copy.color.set(paletteYellow);
+          copy.color.set(yellow);
           recoloredMaterials += 1;
         }
-        materialCopies.set(material, copy);
+        copies.set(material, copy);
       }
-      return materialCopies.get(material);
+      return copies.get(material);
     };
+
     object.material = Array.isArray(object.material)
       ? object.material.map(cloneMaterial)
       : cloneMaterial(object.material);
   });
 
-  // Keep the complete open frame legible within the established Hero camera composition.
-  // Measure from a neutral root so any authored root translation cannot offset the plaza alignment.
+  return { recoloredMaterials, recoloredMeshes };
+}
+
+function motionEnvelope(rig) {
+  const car = rig.userData.motionCar;
+  const counterweight = rig.userData.motionCounterweight;
+  const carRestY = rig.userData.motionCarRestY;
+  const counterweightRestY = rig.userData.motionCounterweightRestY;
+  const localTravel = HERO_LIFT_MOTION.travelMeters / rig.userData.motionLocalScale;
+
+  rig.updateMatrixWorld(true, true);
+  const envelope = new THREE.Box3().setFromObject(rig);
+  car.position.y = carRestY - localTravel;
+  counterweight.position.y = counterweightRestY + localTravel;
+  rig.updateMatrixWorld(true, true);
+  envelope.union(new THREE.Box3().setFromObject(rig));
+
+  car.position.y = carRestY;
+  counterweight.position.y = counterweightRestY;
+  rig.updateMatrixWorld(true, true);
+  return envelope;
+}
+
+/**
+ * Clone the complete scaffold, keeping the CAD-authored fixed frame intact while
+ * separating its named car yoke and counterweight for opposite Y-axis travel.
+ */
+export function createLiftRig(sourceScene, paletteYellow) {
+  if (!sourceScene) throw new Error('Full Assembly GLB scene is required');
+  const sourceAssembly = sourceScene.getObjectByName(ASSEMBLY_NAME);
+  if (!sourceAssembly) throw new Error(`Full Assembly GLB: root “${ASSEMBLY_NAME}” was not found`);
+
+  const rig = sourceAssembly.clone(true);
+  const movingYoke = requireObject(rig, YOKE_NAME, 'moving car yoke');
+  const sourceWeight = requireObject(rig, WEIGHT_NAME, 'counterweight');
+  const rails = RAIL_NAMES.map((name) => requireObject(rig, name, 'car guide rail'));
+
+  // The midpoint between the two T9 guide rails is the car axis, not the centre of the
+  // asymmetric assembly's overall AABB (which includes the counterweight and machinery).
+  const railCenters = rails.map((rail) => objectBounds(rail, 'T9 guide rail').getCenter(new THREE.Vector3()));
+  const railAxis = new THREE.Vector3(
+    (railCenters[0].x + railCenters[1].x) / 2,
+    0,
+    (railCenters[0].z + railCenters[1].z) / 2,
+  );
+
+  // Put both moving subassemblies under neutral pivots. attach() preserves each authored
+  // transform, so the CAD layout stays intact and only the new parent pivots translate.
+  const movingCar = new THREE.Group();
+  movingCar.name = 'Hero_Moving_Car';
+  const movingCounterweight = new THREE.Group();
+  movingCounterweight.name = 'Hero_Moving_Counterweight';
+  rig.add(movingCar, movingCounterweight);
+  movingCar.attach(movingYoke);
+  movingCounterweight.attach(sourceWeight);
+  const yokeLocalBounds = objectBounds(movingYoke, 'moving car yoke');
+
+  const materialStats = styleMaterials(rig, paletteYellow);
+  const movingGroups = new Set([movingCar, movingCounterweight]);
+
   rig.position.set(0, 0, 0);
   rig.scale.setScalar(HERO_LIFT_DISPLAY_SCALE);
-  rig.updateWorldMatrix(true, true);
-  const bounds = new THREE.Box3().setFromObject(rig);
-  if (bounds.isEmpty()) throw new Error('Chb.glb: elevator assembly contains no renderable bounds');
+  rig.updateMatrixWorld(true, true);
 
-  // The GLB's overall bounding-box centre is not its floor footprint: the support column and
-  // base shoe sit toward the back of the frame. Anchor that real ground-contact element to the
-  // centre of the plaza rings so the lift reads centred in both the overhead and final views.
-  const plazaAnchor = rig.getObjectByName('Goldani_Down-1') || rig.getObjectByName('Profil_9x9-1');
-  if (!plazaAnchor) throw new Error('Chb.glb: elevator base footprint anchor was not found');
-  const anchorBounds = new THREE.Box3().setFromObject(plazaAnchor);
-  const anchorCenter = anchorBounds.getCenter(new THREE.Vector3());
-
+  // Ground the fixed frame rather than a travelling part; the rail-axis midpoint becomes
+  // the plaza origin so narrow-screen yaw keeps the lift centred above the floor rings.
+  const fixedBoundsAtOrigin = boundsWithout(rig, movingGroups);
   rig.position.set(
-    -anchorCenter.x,
-    HERO_LIFT_MOTION.surfaceY - bounds.min.y,
-    -anchorCenter.z,
+    -railAxis.x * HERO_LIFT_DISPLAY_SCALE,
+    HERO_LIFT_MOTION.surfaceY - fixedBoundsAtOrigin.min.y,
+    -railAxis.z * HERO_LIFT_DISPLAY_SCALE,
   );
-  rig.updateWorldMatrix(true, true);
-  const placedBounds = new THREE.Box3().setFromObject(rig);
-  const motionEnvelopeBounds = placedBounds.clone();
-  const yokeTopTravelLimitY = yokeOriginalTopY * rig.scale.y + rig.position.y;
-  motionEnvelopeBounds.max.y = Math.max(motionEnvelopeBounds.max.y, yokeTopTravelLimitY);
-  const placedAnchorBounds = new THREE.Box3().setFromObject(plazaAnchor);
-  const placedAnchorCenter = placedAnchorBounds.getCenter(new THREE.Vector3());
+  rig.updateMatrixWorld(true, true);
+
+  const fixedFrameBounds = boundsWithout(rig, movingGroups);
+  const fullAssemblyBounds = new THREE.Box3().setFromObject(rig);
+  const placedRailAxis = new THREE.Vector3(railAxis.x, 0, railAxis.z).multiplyScalar(HERO_LIFT_DISPLAY_SCALE);
+  placedRailAxis.x += rig.position.x;
+  placedRailAxis.z += rig.position.z;
+
   rig.visible = false;
   rig.userData.motionCar = movingCar;
   rig.userData.motionYoke = movingYoke;
+  rig.userData.motionCounterweight = movingCounterweight;
   rig.userData.motionCarRestY = movingCar.position.y;
-  rig.userData.motionCarFrameCenterLocal = motionCarFrameCenterLocal;
+  rig.userData.motionCounterweightRestY = movingCounterweight.position.y;
   rig.userData.motionLocalScale = rig.scale.y;
   rig.userData.motionName = movingCar.name;
   rig.userData.motionYokeName = movingYoke.name;
-  rig.userData.motionYokeAttachOffsetY = yokeAttachOffsetY;
-  rig.userData.motionYokeTopLimitY = yokeTopTravelLimitY;
-  rig.userData.removedShaftWall = shaftWall.name;
-  rig.userData.recoloredMaterials = recoloredMaterials;
-  rig.userData.recoloredMeshObjects = recoloredMeshObjects;
-  rig.userData.plazaAnchorName = plazaAnchor.name;
-  rig.userData.plazaAnchorCenter = placedAnchorCenter.toArray();
-  // Keep the base anchor at the ring origin when the full model yaws in the Hero intro.
+  rig.userData.motionCounterweightName = sourceWeight.name;
+  rig.userData.motionAxis = railAxis.toArray();
+  rig.userData.motionYokeLocalBounds = {
+    min: yokeLocalBounds.min.toArray(),
+    max: yokeLocalBounds.max.toArray(),
+  };
+  rig.userData.plazaAnchorCenter = placedRailAxis.toArray();
   rig.userData.plazaOrbitOffset = [rig.position.x, rig.position.z];
+  rig.userData.fixedFrameBounds = {
+    min: fixedFrameBounds.min.toArray(),
+    max: fixedFrameBounds.max.toArray(),
+  };
+  rig.userData.fullAssemblyBounds = {
+    min: fullAssemblyBounds.min.toArray(),
+    max: fullAssemblyBounds.max.toArray(),
+  };
+  rig.userData.recoloredMaterials = materialStats.recoloredMaterials;
+  rig.userData.recoloredMeshObjects = materialStats.recoloredMeshes;
   rig.userData.surfaceBounds = {
-    min: motionEnvelopeBounds.min.toArray(),
-    max: motionEnvelopeBounds.max.toArray(),
+    min: fullAssemblyBounds.min.toArray(),
+    max: fullAssemblyBounds.max.toArray(),
   };
   return rig;
 }
 
-/** Clone the Cabin Pro GLB into the lift car and align its centre to the car frame. */
+/** Mount an unscaled Cabin Pro clone inside the scaffold and on the car's lower yoke. */
 export function attachHeroCabin(rig, sourceCabinScene) {
   const movingCar = rig?.userData.motionCar;
-  if (!movingCar) throw new Error('Hero lift rig has no moving carsling for the cabin mount');
+  if (!movingCar) throw new Error('Hero scaffold has no moving car pivot for the cabin mount');
   if (!sourceCabinScene) throw new Error('Cabin Pro GLB scene is required for the Hero cabin mount');
   if (rig.userData.motionCabin) return rig.userData.motionCabin;
 
   sourceCabinScene.updateMatrixWorld(true, true);
   const cabin = sourceCabinScene.clone(true);
   cabin.name = 'Hero_Cabin_Pro_V6';
-  const materialCopies = new Map();
-  cabin.traverse((object) => {
-    if (!object.isMesh) return;
-    object.castShadow = true;
-    object.receiveShadow = true;
-    const cloneMaterial = (material) => {
-      if (!material) return material;
-      if (!materialCopies.has(material)) {
-        const copy = material.clone();
-        const color = copy.color;
-        if (color && color.g > 0.5 && color.r < 0.35 && color.b < 0.35) color.set('#ffc21a');
-        materialCopies.set(material, copy);
-      }
-      return materialCopies.get(material);
-    };
-    object.material = Array.isArray(object.material)
-      ? object.material.map(cloneMaterial)
-      : cloneMaterial(object.material);
-  });
+  const materialStats = styleMaterials(cabin, '#ffc21a');
+  const cabinSourceBounds = objectBounds(cabin, 'Cabin Pro model');
+  const cabinSize = cabinSourceBounds.getSize(new THREE.Vector3());
+  const yokeLowerY = rig.userData.motionYokeLocalBounds.min[1];
+  const [axisX, , axisZ] = rig.userData.motionAxis;
+  const targetCenter = new THREE.Vector3(
+    axisX,
+    yokeLowerY + HERO_CABIN_FLOOR_CLEARANCE + cabinSize.y / 2,
+    axisZ,
+  );
+  const sourceCenter = cabinSourceBounds.getCenter(new THREE.Vector3());
 
-  const cabinSourceBounds = new THREE.Box3().setFromObject(cabin);
-  if (cabinSourceBounds.isEmpty()) throw new Error('Cabin Pro GLB contains no renderable bounds');
-
-  // Add rather than Object3D.attach: attach preserves world scale and would cancel the Hero rig's
-  // intentional 0.65 display scale. Align the cabin's source bounds centre to the carsling frame.
-  const cabinSourceCenter = cabinSourceBounds.getCenter(new THREE.Vector3());
-  const carFrameCenterLocal = new THREE.Vector3(...rig.userData.motionCarFrameCenterLocal);
+  // Add (rather than attach) to preserve the real-world Cabin Pro dimensions under the
+  // display-scaled scaffold. The lower face sits just above the yoke and the guide rails
+  // define its X/Z alignment.
   movingCar.add(cabin);
-  cabin.position.add(carFrameCenterLocal.sub(cabinSourceCenter));
+  cabin.position.add(targetCenter.sub(sourceCenter));
   rig.updateMatrixWorld(true, true);
+
+  const cabinRestBounds = new THREE.Box3().setFromObject(cabin);
+  const fixedFrameBounds = new THREE.Box3(
+    new THREE.Vector3(...rig.userData.fixedFrameBounds.min),
+    new THREE.Vector3(...rig.userData.fixedFrameBounds.max),
+  );
+  const fitsFrame =
+    cabinRestBounds.min.x >= fixedFrameBounds.min.x - BOX_EPSILON &&
+    cabinRestBounds.max.x <= fixedFrameBounds.max.x + BOX_EPSILON &&
+    cabinRestBounds.min.y >= fixedFrameBounds.min.y - BOX_EPSILON &&
+    cabinRestBounds.max.y <= fixedFrameBounds.max.y + BOX_EPSILON &&
+    cabinRestBounds.min.z >= fixedFrameBounds.min.z - BOX_EPSILON &&
+    cabinRestBounds.max.z <= fixedFrameBounds.max.z + BOX_EPSILON;
+  if (!fitsFrame) {
+    movingCar.remove(cabin);
+    throw new Error('Cabin Pro does not fit within the fixed scaffold bounds at the authored car position');
+  }
 
   rig.userData.motionCabin = cabin;
   rig.userData.motionCabinName = cabin.name;
@@ -161,5 +240,26 @@ export function attachHeroCabin(rig, sourceCabinScene) {
     min: cabinSourceBounds.min.toArray(),
     max: cabinSourceBounds.max.toArray(),
   };
+  rig.userData.motionCabinBounds = {
+    min: cabinRestBounds.min.toArray(),
+    max: cabinRestBounds.max.toArray(),
+  };
+  rig.userData.cabinFitsFrame = fitsFrame;
+  rig.userData.cabinRecoloredMaterials = materialStats.recoloredMaterials;
+  rig.userData.cabinRecoloredMeshObjects = materialStats.recoloredMeshes;
+  const envelope = motionEnvelope(rig);
+  rig.userData.surfaceBounds = {
+    min: envelope.min.toArray(),
+    max: envelope.max.toArray(),
+  };
   return cabin;
+}
+
+/** Apply a bounded world-space travel amount: car down, counterweight up. */
+export function applyLiftTravel(rig, travelMeters) {
+  if (!rig?.userData?.motionCar || !rig?.userData?.motionCounterweight) return;
+  const travel = THREE.MathUtils.clamp(travelMeters, 0, HERO_LIFT_MOTION.travelMeters);
+  const localTravel = travel / rig.userData.motionLocalScale;
+  rig.userData.motionCar.position.y = rig.userData.motionCarRestY - localTravel;
+  rig.userData.motionCounterweight.position.y = rig.userData.motionCounterweightRestY + localTravel;
 }

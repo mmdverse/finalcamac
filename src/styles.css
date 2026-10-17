@@ -1,6 +1,14 @@
 
 
 @font-face {
+  font-family: 'VIP Hala';
+  src: url('/fonts/VIP-Hala-Bold.otf') format('opentype');
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+}
+
+@font-face {
   font-family: 'Noto Kufi Arabic';
   src: url('/fonts/NotoKufiArabic-Arabic.woff2') format('woff2');
   font-style: normal;
@@ -23,6 +31,9 @@
   --accent: #cdbb9d;
   --line: rgba(255, 255, 255, 0.12);
   --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
+  --hero-fade: 0;
+  --transition-blur: 0px;
+  --flux-opacity: 0;
 }
 
 * { box-sizing: border-box; }
@@ -46,8 +57,18 @@ button { font: inherit; color: inherit; }
   z-index: 0;
   background: var(--bg);
   overflow: hidden;
+  filter: blur(var(--transition-blur, 0px));
 }
 .stage canvas { display: block; width: 100% !important; height: 100% !important; touch-action: pan-y; }
+
+/* Temporary full-screen Flux Lines shader: scroll-linked and click-through. */
+.flux-transition {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  opacity: var(--flux-opacity, 0);
+}
 
 /* ---------- Overlay: text is pass-through so the canvas stays hoverable ---------- */
 .site { position: relative; z-index: 1; pointer-events: none; }
@@ -361,6 +382,8 @@ a.sfooter-item:hover { color: #e0a800; }
 }
 @media (prefers-reduced-motion: reduce) {
   .loader-bar { animation: none; }
+  .stage, .hero-brand, .hero-cue { filter: none; }
+  .flux-transition { display: none; }
 }
 
 /* Back to top: appears once the cabin is complete and the page is scrolled down. */
@@ -384,7 +407,7 @@ a.sfooter-item:hover { color: #e0a800; }
 .fade-veil.is-on { opacity: 1; }
 
 /* ---------- Storyboard hero ---------- */
-/* Scroll track that drives the 9 s storyboard timeline. */
+/* Single-viewport hero lead-in for the four-second camera take. */
 .hero-track { height: 100vh; pointer-events: none; }
 
 /* ReactBits StrokeText overlays: positioning only; the text animation remains the official component. */
@@ -414,7 +437,8 @@ a.sfooter-item:hover { color: #e0a800; }
   direction: rtl;
   unicode-bidi: plaintext;
   text-anchor: end;
-  font-family: 'Noto Kufi Arabic', system-ui, sans-serif;
+  font-family: 'VIP Hala', 'Noto Kufi Arabic', system-ui, sans-serif;
+  font-weight: 700;
 }
 .camac-hero-message { z-index: 8; }
 .camac-assembly-message {
@@ -431,6 +455,8 @@ a.sfooter-item:hover { color: #e0a800; }
   position: fixed; left: 7vw; top: 50%; z-index: 6;
   transform: translateY(-50%);
   pointer-events: none;
+  opacity: calc(1 - var(--hero-fade, 0));
+  filter: blur(var(--transition-blur, 0px));
 }
 .hero-brand-lockup {
   opacity: 0;
@@ -464,6 +490,7 @@ a.sfooter-item:hover { color: #e0a800; }
 .hero-tag {
   margin-top: 14px; font-size: clamp(11px, 1vw, 13px); letter-spacing: .02em;
   color: #c9ced2; direction: rtl; text-align: left; unicode-bidi: plaintext;
+  font-family: 'VIP Hala', 'Noto Kufi Arabic', system-ui, sans-serif; font-weight: 700;
 }
 .hero-address {
   width: min(330px, 52vw);
@@ -482,20 +509,25 @@ a.sfooter-item:hover { color: #e0a800; }
 }
 .hero-address.is-on { opacity: 1; transform: translateY(0); }
 
-/* Scroll cue (final hero frame, right side): circle / line / text / line / circle. */
+/* Scroll cue sits below the lift in the final hero frame: a quiet horizontal line. */
 .hero-cue {
-  position: fixed; right: 5.5vw; top: 50%; transform: translateY(-50%);
-  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  position: fixed; left: 68%; right: auto; top: auto; bottom: clamp(18px, 5vh, 52px);
+  transform: translateX(-50%);
+  display: flex; flex-direction: row; align-items: center; gap: 10px;
   z-index: 6; color: #c9ced2; opacity: 0; pointer-events: none;
+  filter: blur(var(--transition-blur, 0px));
   transition: opacity 1s var(--ease);
 }
-.hero-cue.is-on { opacity: 1; }
-.hero-cue .c { width: 7px; height: 7px; border: 1px solid #c9ced2; border-radius: 50%; }
-.hero-cue .l { width: 1px; height: 56px; background: linear-gradient(#c9ced2, rgba(201, 206, 210, .12)); }
+.hero-cue.is-on { opacity: calc(1 - var(--hero-fade, 0)); }
+html.is-hero-transitioning .hero-cue,
+html.is-hero-transitioning .hero-brand-lockup,
+html.is-hero-transitioning .hero-address { transition: none; }
+.hero-cue .c { width: 7px; height: 7px; border: 1px solid #c9ced2; border-radius: 50%; flex: 0 0 auto; }
+.hero-cue .l { width: clamp(24px, 4vw, 46px); height: 1px; background: linear-gradient(90deg, rgba(201, 206, 210, .12), #c9ced2); }
 .hero-cue .t { font-size: 12px; letter-spacing: 0; text-align: center; line-height: 1.8; font-weight: 500; white-space: nowrap; }
 @media (max-width: 768px) {
   .hero-brand { left: 8vw; }
-  .hero-cue { right: 7vw; }
+  .hero-cue { left: 50%; }
   .hero-address { width: min(280px, 58vw); font-size: 9px; }
   .hero-brand > .camac-hero-message { width: min(280px, 58vw); }
   .camac-stroke-message { right: 20px; width: calc(100vw - 40px); }
@@ -509,7 +541,8 @@ a.sfooter-item:hover { color: #e0a800; }
   .hero-address { width: min(270px, 70vw); margin-top: 3px; font-size: 9px; }
   .hero-brand > .camac-hero-message { width: min(270px, 70vw); margin-top: 3px; }
   .camac-stroke-message { top: 18px; right: 18px; width: calc(100vw - 36px); }
-  .hero-cue .l { height: 34px; }
+  .hero-cue { bottom: 18px; gap: 7px; }
+  .hero-cue .l { width: 20px; }
   .hero-cue .t { font-size: 10px; }
 }
 @media (max-height: 480px) {

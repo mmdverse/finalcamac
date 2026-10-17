@@ -45,6 +45,7 @@ export default function CabinModel({ cabin, onReady }) {
   const partsRef = useRef([]);
   const partByObject = useRef(new Map());
   const assemblyRef = useRef(null);
+  const lastProgressRef = useRef(Number.NaN);
 
   useLayoutEffect(() => {
     const g = outer.current;
@@ -132,7 +133,13 @@ export default function CabinModel({ cabin, onReady }) {
 
   // Smooth highlight: per-part weight eases towards 1 when hovered/selected.
   useFrame((_, dt) => {
-    assemblyRef.current?.update(store.progress, dt, fx.idle);
+    if (store.act === 'hero') return;
+    const assembly = assemblyRef.current;
+    const progress = store.progress;
+    if (assembly && (progress !== lastProgressRef.current || assembly.isLaserActive(progress))) {
+      assembly.update(progress, dt, fx.idle);
+      lastProgressRef.current = progress;
+    }
     // While a piece is shown or landing, the cabin turns so the seat faces the camera; then it returns.
     const v = fx.view;
     const tYaw = v.active ? v.yaw : 0;

@@ -4,13 +4,13 @@ import { useEffect, useRef } from 'react';
 const YELLOW_GAIN = 0.45; // colour strength of the fixed (non-rainbow) colour; higher = more vivid
 
 function SplashCursor({
-  SIM_RESOLUTION = 128,
-  DYE_RESOLUTION = 1440,
+  SIM_RESOLUTION = 96,
+  DYE_RESOLUTION = 768,
   CAPTURE_RESOLUTION = 512,
   DENSITY_DISSIPATION = 3.5,
   VELOCITY_DISSIPATION = 2,
   PRESSURE = 0.1,
-  PRESSURE_ITERATIONS = 20,
+  PRESSURE_ITERATIONS = 12,
   CURL = 3,
   SPLAT_RADIUS = 0.2,
   SPLAT_FORCE = 6000,
@@ -677,26 +677,43 @@ function SplashCursor({
 
     updateKeywords();
     initFramebuffers();
-    let lastUpdateTime = Date.now();
+    let lastUpdateTime = performance.now();
+    let lastInputTime = lastUpdateTime;
     let colorUpdateTimer = 0.0;
+    let isRunning = false;
+    const TRAIL_ACTIVE_MS = 1300; // let the fluid dissipate, then sleep until the next pointer event
+
+    function wake() {
+      if (!isActive || isRunning) return;
+      isRunning = true;
+      lastUpdateTime = performance.now();
+      animationFrameId.current = requestAnimationFrame(updateFrame);
+    }
+
+    function markActivity() {
+      lastInputTime = performance.now();
+      wake();
+    }
 
     function updateFrame() {
-      if (!isActive) return;
-      const dt = calcDeltaTime();
+      if (!isActive) {
+        isRunning = false;
+        return;
+      }
+      const now = performance.now();
+      const dt = Math.min((now - lastUpdateTime) / 1000, 1 / 60);
+      lastUpdateTime = now;
       if (resizeCanvas()) initFramebuffers();
       updateColors(dt);
       applyInputs();
       step(dt);
       render(null);
-      animationFrameId.current = requestAnimationFrame(updateFrame);
-    }
-
-    function calcDeltaTime() {
-      let now = Date.now();
-      let dt = (now - lastUpdateTime) / 1000;
-      dt = Math.min(dt, 0.016666);
-      lastUpdateTime = now;
-      return dt;
+      if (now - lastInputTime < TRAIL_ACTIVE_MS) {
+        animationFrameId.current = requestAnimationFrame(updateFrame);
+      } else {
+        isRunning = false;
+        animationFrameId.current = null;
+      }
     }
 
     function resizeCanvas() {
@@ -966,7 +983,7 @@ function SplashCursor({
     }
 
     function scaleByPixelRatio(input) {
-      const pixelRatio = window.devicePixelRatio || 1;
+      const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.25);
       return Math.floor(input * pixelRatio);
     }
 
@@ -987,6 +1004,7 @@ function SplashCursor({
       let posY = scaleByPixelRatio(e.clientY);
       updatePointerDownData(pointer, -1, posX, posY);
       clickSplat(pointer);
+      markActivity();
     }
 
     let firstMouseMoveHandled = false;
@@ -1001,6 +1019,7 @@ function SplashCursor({
       } else {
         updatePointerMoveData(pointer, posX, posY, pointer.color);
       }
+      if (pointer.moved) markActivity();
     }
 
     function handleTouchStart(e) {
@@ -1011,6 +1030,7 @@ function SplashCursor({
         let posY = scaleByPixelRatio(touches[i].clientY);
         updatePointerDownData(pointer, touches[i].identifier, posX, posY);
       }
+      if (touches.length) markActivity();
     }
 
     function handleTouchMove(e) {
@@ -1021,6 +1041,7 @@ function SplashCursor({
         let posY = scaleByPixelRatio(touches[i].clientY);
         updatePointerMoveData(pointer, posX, posY, pointer.color);
       }
+      if (pointer.moved) markActivity();
     }
 
     function handleTouchEnd(e) {
@@ -1031,14 +1052,27 @@ function SplashCursor({
       }
     }
 
+    const handleResize = () => markActivity();
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (animationFrameId.current) cancelAnimationFrame(animationFrameId.current);
+        animationFrameId.current = null;
+        isRunning = false;
+      } else if (performance.now() - lastInputTime < TRAIL_ACTIVE_MS) {
+        wake();
+      }
+    };
+
     // Add event listeners
     window.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('touchstart', handleTouchStart);
     window.addEventListener('touchmove', handleTouchMove, false);
     window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('resize', handleResize, { passive: true });
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    updateFrame();
+    wake();
 
     // Cleanup function
     return () => {
@@ -1056,6 +1090,8 @@ function SplashCursor({
       window.removeEventListener('touchstart', handleTouchStart);
       window.removeEventListener('touchmove', handleTouchMove);
       window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('resize', handleResize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

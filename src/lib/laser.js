@@ -166,6 +166,12 @@ export function createLaserSign({ fx, toWorld, panel, windowStart, windowEnd }) 
   group.add(beam);
 
   let sparkT = 0;
+  const camCentre = new THREE.Vector3();
+  const camDirection = new THREE.Vector3(0.2, 0.08, 1).normalize();
+  const camLocalPos = new THREE.Vector3();
+  const camWorldPos = new THREE.Vector3();
+  const camWorldTarget = new THREE.Vector3();
+  const camResult = { pos: camWorldPos, target: camWorldTarget };
 
   function activeLetter(progress) {
     for (let i = 0; i < letters.length; i++) {
@@ -188,27 +194,29 @@ export function createLaserSign({ fx, toWorld, panel, windowStart, windowEnd }) 
     const u = clamp01((progress - windowStart) / Math.max(1e-6, windowEnd - windowStart)) * n;
     const i = Math.min(n - 1, Math.floor(u));
     const f = Math.min(1, u - i);
-    const centreY = (j) => group.position.y + letters[j].top - capH * 0.5;
     const e = smoothStep(clamp01((f - 0.5) / 0.5));
     const next = Math.min(n - 1, i + 1);
-    const cy = centreY(i) + (centreY(next) - centreY(i)) * e;
-    const centre = new THREE.Vector3(group.position.x, cy, group.position.z + depth / 2);
-    const dir = new THREE.Vector3(0.2, 0.08, 1).normalize();
-    const pos = centre.clone().addScaledVector(dir, dist);
-    return { pos: toWorld(pos), target: toWorld(centre) };
+    const centreY = group.position.y + letters[i].top - capH * 0.5;
+    const nextY = group.position.y + letters[next].top - capH * 0.5;
+    camCentre.set(group.position.x, centreY + (nextY - centreY) * e, group.position.z + depth / 2);
+    camLocalPos.copy(camCentre).addScaledVector(camDirection, dist);
+    toWorld(camLocalPos, camWorldPos);
+    toWorld(camCentre, camWorldTarget);
+    return camResult;
   }
 
   function update(progress, dt) {
     group.visible = progress >= windowStart;
     let head = null;
-    letters.forEach((L, i) => {
+    for (let i = 0; i < letters.length; i++) {
+      const L = letters[i];
       const q = clamp01((progress - L.a) / share);
       L.mesh.visible = q > 0;
       L.uniforms.uCut.value = q;
       // while being cut the edge is hot; afterwards the letter keeps a faint warm glow
       L.uniforms.uGlow.value = q <= 0 ? 0 : q < 1 ? 1 : 0.08;
-      if (q > 0 && q < 1) head = { L, q, i };
-    });
+      if (q > 0 && q < 1) head = { L, q };
+    }
 
     if (head) {
       const { L, q } = head;

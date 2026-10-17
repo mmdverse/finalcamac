@@ -4,24 +4,29 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { store } from '../lib/store';
 import { sampleCameraPath } from '../lib/cameraMath';
-import { HERO_CAMERA, HERO_ATMO, HERO_SECONDS, PAL } from './heroData';
+import { HERO_CAMERA, HERO_ATMO, HERO_SECONDS, HERO_STORYBOARD_SECONDS, HERO_HANDOFF_AT, PAL } from './heroData';
 import { liftTravelAt } from './liftMotion';
-import { attachHeroCabin, createLiftRig } from './liftModel';
+import { applyLiftTravel, attachHeroCabin, createLiftRig } from './liftModel';
 import { pickModelUrl } from '../lib/modelQuality';
 
-// Cabin Pro is Draco-compressed; serve the same local decoder used by the studio viewer.
+// Hero assembly and cabin GLBs are Draco-compressed; serve the local decoder used by the studio viewer.
 useGLTF.setDecoderPath('/draco/gltf/');
+
+const HERO_SCAFFOLD_MODEL = Object.freeze({
+  desktop: '/models/camac-assembly.desktop.glb',
+  mobile: '/models/camac-assembly.mobile.glb',
+});
 
 /**
  * The storyboard, rebuilt as a real 3D environment (not slides, not video).
  * Every asset below is a mesh/line/point in the scene; the narrative comes from
- * real changes of position, visibility and materials driven by `t` (0..9 s),
- * driven by a timed 9 s intro that plays on load (no scrolling).
+ * real changes of position, visibility and materials on a six-second authored beat scale,
+ * compressed into a 4-second playback that begins only after the loading screen exits.
  *
  * Beats (see heroData.js): fog+particles -> line network -> wireframe city ->
  * open plaza and surface-mounted elevator -> yellow rings -> close passes -> wide brand frame.
- * The shaft enclosure is removed; the CHB frame rests on the plaza, while the fully assembled
- * Cabin Pro model and its carsling/yoke move together on the GLB's Y axis.
+ * The 7.9 m scaffold rests on the plaza; Cabin Pro seats on its guide-rail axis, while the car
+ * yoke and counterweight travel in opposite directions along the GLB's authored Y axis.
  */
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -83,7 +88,7 @@ function mergeBoxes(specs) {
 
 const YELLOW = new THREE.Color(PAL.yellow);
 const WHITE = new THREE.Color('#e6ebee');
-const HERO_STROKE_START_AT = 4.6; // camera reaches the plaza-level keyframe and begins its turn
+const HERO_STROKE_DELAY = 0; // start the hero line draw on the final camera keyframe
 
 function buildHeroWorld() {
   const rnd = mulberry32(20261010);
@@ -430,11 +435,7 @@ function buildHeroWorld() {
   M.hemi = new THREE.HemisphereLight('#cfd4da', '#33363a', 0.25);
   M.sun = new THREE.DirectionalLight('#ffd9a0', 0);
   M.sun.position.set(14, 13, -16); // sunrise rim from behind the skyline
-  M.sun.castShadow = true;
-  M.sun.shadow.mapSize.set(1024, 1024);
-  Object.assign(M.sun.shadow.camera, { left: -16, right: 16, top: 18, bottom: -16, near: 2, far: 60 });
-  M.sun.shadow.bias = -0.0004;
-  M.sun.shadow.normalBias = 0.02;
+  M.sun.castShadow = false; // avoid an extra shadow-map render on every cinematic frame
   M.fill = new THREE.DirectionalLight('#e8ecef', 0);
   M.fill.position.set(-6, 8, 10);
   group.add(M.hemi, M.sun, M.fill);
@@ -510,14 +511,14 @@ function HeroLift({ rigRef, cabin, skipCabin }) {
 }
 
 function HeroLiftFrame({ rigRef }) {
-  const { scene } = useGLTF('/models/camac-lift-chb.glb');
+  const { scene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
   const rig = useMemo(() => createLiftRig(scene, PAL.yellow), [scene]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
-/** Load both real GLBs, then mount a pristine Cabin Pro clone on the moving CHB carsling. */
+/** Load the selected scaffold tier and mount a pristine Cabin Pro clone on its moving car. */
 function HeroLiftWithCabin({ rigRef, cabin }) {
-  const { scene: liftScene } = useGLTF('/models/camac-lift-chb.glb');
+  const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
   const { scene: cabinScene } = useGLTF(pickModelUrl(cabin.model));
   const rig = useMemo(() => {
     const assembledRig = createLiftRig(liftScene, PAL.yellow);
@@ -527,7 +528,7 @@ function HeroLiftWithCabin({ rigRef, cabin }) {
   return <primitive object={rig} ref={rigRef} />;
 }
 
-/** Atmosphere (background + fog) sampled over the 9 s timeline. */
+/** Atmosphere (background + fog) sampled over the 6 s timeline. */
 const atmoColor = new THREE.Color();
 const atmoNext = new THREE.Color();
 function sampleAtmo(t, out) {
@@ -548,7 +549,7 @@ const ORIGIN = new THREE.Vector3(0, 0, 0);
 const UPV = new THREE.Vector3(0, 1, 0);
 
 /**
- * The intro plays on load as a timed 9 s cinematic (no scrolling). When it ends the
+ * The intro plays on load as a timed 4 s cinematic (no scrolling). When it ends the
  * hero frame stays alive: moving the pointer nudges the camera around the final
  * framing, and a click sends a ripple across the plaza the cabin answers to.
  * QA: `?freeze=<s>` or window.__FREEZE pins the timeline for screenshots.
@@ -558,10 +559,10 @@ export default function HeroScene({ cabin, skipCabin = false }) {
   const world = useMemo(() => buildHeroWorld(), []);
   const liftRef = useRef(null);
   const tmp = useMemo(
-    () => ({ cam: { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 50 }, atmo: { color: new THREE.Color(), near: 0, far: 0 }, rel: new THREE.Vector3() }),
+    () => ({ cam: { pos: new THREE.Vector3(), target: new THREE.Vector3(), fov: 50 }, atmo: { color: new THREE.Color(), near: 0, far: 0 }, rel: new THREE.Vector3(), right: new THREE.Vector3() }),
     [],
   );
-  const st = useMemo(() => ({ t: 0, az: 0, el: 0, rippleQ: false, rippleAt: -1, liftTime: 0, done: false, strokeStarted: false }), []);
+  const st = useMemo(() => ({ t: 0, elapsed: 0, startedAt: null, az: 0, el: 0, rippleQ: false, rippleAt: -1, liftTime: 0, done: false, landedAt: null, strokeStarted: false }), []);
   const freezeParam = useMemo(() => {
     const v = new URLSearchParams(window.location.search).get('freeze');
     return v == null ? null : Number(v);
@@ -585,18 +586,32 @@ export default function HeroScene({ cabin, skipCabin = false }) {
     if (!hero) return;
 
     const fr = window.__FREEZE != null ? window.__FREEZE : freezeParam;
-    st.t = fr != null ? fr : Math.min(HERO_SECONDS, st.t + dt);
-    st.liftTime = fr != null ? fr : st.liftTime + dt;
+    const playbackActive = store.heroStarted || fr != null;
+    // Keep smoothing steps bounded, but measure the take against monotonic wall time so
+    // a slow frame rate cannot stretch the requested four-second camera move.
+    const absoluteNow = window.performance.now() / 1000;
+    if (playbackActive && st.startedAt == null) st.startedAt = absoluteNow - (fr ?? 0);
+    const playbackElapsed = playbackActive && st.startedAt != null
+      ? Math.max(0, absoluteNow - st.startedAt)
+      : 0;
+    const playbackDt = playbackActive ? Math.min(0.05, Math.max(0, dt)) : 0;
+    st.t = fr != null ? fr : Math.min(HERO_SECONDS, playbackElapsed);
+    st.liftTime = fr != null ? fr : playbackElapsed;
+    st.elapsed = playbackElapsed;
     const t = st.t;
-    const e = state.clock.elapsedTime;
-    if (!st.strokeStarted && t >= HERO_STROKE_START_AT) {
+    const e = st.elapsed;
+    const takeProgress = sstep(t / HERO_SECONDS);
+    const storyTime = takeProgress * HERO_STORYBOARD_SECONDS;
+    if (t < HERO_SECONDS) st.landedAt = null;
+    else if (st.landedAt == null) st.landedAt = e;
+    if (!st.strokeStarted && st.landedAt != null && e - st.landedAt >= HERO_STROKE_DELAY) {
       st.strokeStarted = true;
       store.set({ heroStrokeStarted: true });
     }
-    world.update(t, e);
+    world.update(storyTime, e);
 
     // camera along the storyboard path; after the intro the pointer can orbit it a little
-    sampleCameraPath(HERO_CAMERA, Math.min(1, t / HERO_SECONDS), ORIGIN, 1, tmp.cam);
+    sampleCameraPath(HERO_CAMERA, takeProgress, ORIGIN, 1, tmp.cam);
     // portrait / narrow screens: pull back and widen so the whole composition fits
     const aspect = state.size.width / Math.max(1, state.size.height);
     const narrow = Math.min(1, Math.max(0, (1.15 - aspect) / 0.6));
@@ -604,9 +619,15 @@ export default function HeroScene({ cabin, skipCabin = false }) {
       tmp.cam.pos.sub(tmp.cam.target).multiplyScalar(1 + narrow * 0.55).add(tmp.cam.target);
       tmp.cam.fov *= 1 + narrow * 0.18;
     }
+    // Scroll-controlled dolly-back: it finishes at the obscured handoff to the studio scene.
+    const handoff = sstep(store.heroTransition / HERO_HANDOFF_AT);
+    if (handoff > 0) {
+      const pullback = 0.42 * (1 - narrow * 0.55) * handoff;
+      tmp.cam.pos.sub(tmp.cam.target).multiplyScalar(1 + pullback).add(tmp.cam.target);
+    }
     // narrow screens: yaw the world so the shrine and surface-mounted lift stay in the slim frame
     const yawT = -narrow * 0.15;
-    st.yaw = (st.yaw || 0) + (yawT - (st.yaw || 0)) * (1 - Math.exp(-dt * 3));
+    st.yaw = (st.yaw || 0) + (yawT - (st.yaw || 0)) * (1 - Math.exp(-playbackDt * 3));
     world.group.rotation.y = st.yaw;
     if (liftRig) {
       // Rotate the offset root around the plaza origin, keeping its ground-contact anchor over the rings.
@@ -618,22 +639,21 @@ export default function HeroScene({ cabin, skipCabin = false }) {
         liftRig.position.z = -s * orbitOffset[0] + c * orbitOffset[1];
       }
       liftRig.rotation.y = st.yaw;
-      const car = liftRig.userData.motionCar;
-      if (car) car.position.y = liftRig.userData.motionCarRestY + liftTravelAt(st.liftTime) / liftRig.userData.motionLocalScale;
+      applyLiftTravel(liftRig, liftTravelAt(st.liftTime));
     }
     const live = t >= HERO_SECONDS - 1e-3;
-    const k = 1 - Math.exp(-dt * 3);
+    const k = 1 - Math.exp(-playbackDt * 3);
     st.az += ((live ? state.pointer.x * 0.09 : 0) - st.az) * k;
     st.el += ((live ? state.pointer.y * 0.045 : 0) - st.el) * k;
     if (st.az !== 0 || st.el !== 0) {
       // tmp.rel is a scratch vector: aliasing pos as rel would corrupt the copy below
       tmp.rel.copy(tmp.cam.pos).sub(tmp.cam.target);
       tmp.rel.applyAxisAngle(UPV, -st.az);
-      const right = new THREE.Vector3().crossVectors(tmp.rel, UPV).normalize();
-      tmp.rel.applyAxisAngle(right, st.el);
+      tmp.right.crossVectors(tmp.rel, UPV).normalize();
+      tmp.rel.applyAxisAngle(tmp.right, st.el);
       tmp.cam.pos.copy(tmp.cam.target).add(tmp.rel);
     }
-    const idle = live ? 1 : 0.35;
+    const idle = playbackActive ? (live ? 1 : 0.35) : 0;
     tmp.cam.pos.x += Math.sin(e * 0.24) * 0.05 * idle;
     tmp.cam.pos.y += Math.sin(e * 0.18 + 1.2) * 0.03 * idle;
     camera.position.copy(tmp.cam.pos);
@@ -670,7 +690,7 @@ export default function HeroScene({ cabin, skipCabin = false }) {
     }
 
     // atmosphere
-    sampleAtmo(t, tmp.atmo);
+    sampleAtmo(storyTime, tmp.atmo);
     if (scene.background && scene.background.isColor) scene.background.copy(tmp.atmo.color);
     if (scene.fog) {
       scene.fog.color.copy(tmp.atmo.color);

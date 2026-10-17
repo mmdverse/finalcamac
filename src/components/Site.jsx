@@ -4,6 +4,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { brand } from '../data/cabins';
 import { footer } from '../data/footer';
 import { store } from '../lib/store';
+import { HERO_HANDOFF_AT } from '../hero/heroData';
 import { fx } from '../lib/fx';
 import { useStore } from '../lib/useStore';
 import CalculatorSection from './CalculatorSection';
@@ -16,16 +17,11 @@ const ASSEMBLED_AT = 0.985;
 // Shared type and color treatment for Hero and assembly StrokeText.
 const STROKE_FILL = '#FFFFFF';
 const STROKE_OUTLINE = '#555B5E';
-const STROKE_WEIGHT = 400;
+const STROKE_WEIGHT = 700;
 const STROKE_WIDTH = 0.6;
-const HERO_STROKE_SIZE = 19;
+const HERO_STROKE_SIZE = 38; // 2x the previous 19 px size
 const ASSEMBLY_STROKE_SIZE = 17;
 
-/**
- * The sequence spacer is the scroll track for the cinematic assembly.
- * Its progress (0..1) drives the 3D scene. Once the cabin is complete it stays complete:
- * scrolling back up never takes the pieces apart.
- */
 /**
  * The hero is a timed intro, not a scroll track: it owns one viewport. Scrolling
  * past it hands the stage to the site act (cabin assembly), exactly as before.
@@ -33,21 +29,50 @@ const ASSEMBLY_STROKE_SIZE = 17;
 function useActSwitch() {
   useEffect(() => {
     const update = () => {
-      const act = window.scrollY > window.innerHeight * 0.55 ? 'site' : 'hero';
-      if (act !== store.act) store.set({ act });
+      const height = Math.max(1, window.innerHeight);
+      const rawProgress = window.scrollY / height;
+      const progress = Math.min(1, Math.max(0, rawProgress));
+      const entrance = Math.min(1, Math.max(0, progress / HERO_HANDOFF_AT));
+      const exit = Math.min(1, Math.max(0, (progress - HERO_HANDOFF_AT) / (1 - HERO_HANDOFF_AT)));
+      const ease = (value) => value * value * (3 - 2 * value);
+      const blurMix = progress <= HERO_HANDOFF_AT ? ease(entrance) : 1 - ease(exit);
+      const heroFade = ease(entrance);
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+      const root = document.documentElement;
+
+      // CSS handles the full-composition blur/veil without rerendering the DOM on every scroll event.
+      root.style.setProperty('--hero-fade', heroFade.toFixed(4));
+      root.style.setProperty('--transition-blur', `${reducedMotion ? 0 : (12 * blurMix).toFixed(2)}px`);
+      root.style.setProperty('--flux-opacity', `${reducedMotion ? 0 : (0.84 * Math.pow(Math.sin(Math.PI * progress), 2)).toFixed(3)}`);
+      store.heroTransition = reducedMotion ? 0 : progress;
+
+      const act = window.scrollY > height * HERO_HANDOFF_AT ? 'site' : 'hero';
+      // Hysteresis avoids destroying/recreating the temporary WebGL context on tiny edge bounces.
+      const transitionActive = !reducedMotion && (store.heroTransitionActive
+        ? rawProgress > 0.001 && rawProgress < 1.04
+        : rawProgress > 0.002 && rawProgress < 0.998);
+      root.classList.toggle('is-hero-transitioning', transitionActive);
+      const patch = {};
+      if (act !== store.act) patch.act = act;
+      if (transitionActive !== store.heroTransitionActive) patch.heroTransitionActive = transitionActive;
+      if (Object.keys(patch).length) store.set(patch);
     };
+    const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
     window.addEventListener('scroll', update, { passive: true });
     window.addEventListener('resize', update);
+    motionQuery?.addEventListener?.('change', update);
     update();
     return () => {
       window.removeEventListener('scroll', update);
       window.removeEventListener('resize', update);
+      motionQuery?.removeEventListener?.('change', update);
     };
   }, []);
 }
 
 /** Back to the empty start: the completed state is cleared and the page goes to the top. */
 function resetSequence() {
+  fx.autoScroll = false;
   store.seqDone = false;
   store.set({ progress: 0, assembled: false });
   window.scrollTo({ top: 0, behavior: 'instant' });
@@ -69,8 +94,8 @@ function fadeThenReset() {
 /**
  * The sequence spacer is the scroll track for the cinematic assembly. Progress comes straight from the
  * scroll position. The track ends exactly where the assembly completes (laser included), so no extra
- * scrolling is needed before the model can be turned. Once complete it stays complete; scrolling up
- * fades the scene out and returns to the empty start.
+ * scrolling is needed before the model can be turned. Once complete, the model stays assembled;
+ * scrolling back up fades the scene out and returns to the empty start.
  */
 function useSequenceProgress(ref) {
   useEffect(() => {
@@ -106,62 +131,102 @@ function useSequenceProgress(ref) {
   }, [ref]);
 }
 
-const AUTO_IDLE_MS = 3000; // after this much time without input, the page moves on by itself
-const AUTO_RUN_MS = 120000; // the whole track plays through in about this long
+const AUTO_IDLE_MS = 3000;
+const AUTO_RUN_MS = 120000;
 const USER_EVENTS = ['wheel', 'touchstart', 'touchmove', 'pointerdown', 'keydown'];
 
 /**
- * Auto-scroll: after the first user scroll, once the user has been idle for AUTO_IDLE_MS the page
- * glides on by itself through the whole sequence, without stopping at each piece. Pieces land as
- * they pass. The speed eases in and out. Any user input stops it at once; the idle timer restarts
- * from that input.
+ * Resume the idle glide only after the visitor has manually entered the assembly track.
+ * The intro/hero viewport is deliberately outside this trigger and can never auto-scroll.
  */
 function useAutoScroll(ref) {
   useEffect(() => {
-    let hasScrolled = false;
+    let hasScrolledAssembly = false;
+    let userInputPending = false;
     let running = false;
     let lastActivity = performance.now();
-    let velocity = 0; // px per second
+    let velocity = 0;
     let lastNow = 0;
     let raf = 0;
-    // random speed changes during the auto-glide: some pieces fly faster, some slower
     let speedMul = 1;
     let speedTarget = 1;
     let nextSpeedAt = 0;
 
-    const cancel = () => {
+    const getTrack = () => {
+      const el = ref.current;
+      if (!el || !store.sequence) return null;
+      const top = el.offsetTop;
+      const range = Math.max(0, el.offsetHeight - window.innerHeight);
+      return { top, end: top + range, range };
+    };
+    const insideAssembly = (track = getTrack(), y = window.scrollY) =>
+      Boolean(track && track.range > 0 && y >= track.top && y < track.end - 1 && !store.assembled);
+    const stop = () => {
       running = false;
       fx.autoScroll = false;
-      velocity = 0; // stop dead so it never fights the user's own scroll
-      hasScrolled = true;
-      lastActivity = performance.now();
+      velocity = 0;
     };
-    USER_EVENTS.forEach((e) => window.addEventListener(e, cancel, { passive: true }));
+
+    const onUserInput = () => {
+      stop();
+      lastActivity = performance.now();
+      if (insideAssembly()) hasScrolledAssembly = true;
+      userInputPending = true;
+      requestAnimationFrame(() => {
+        if (!userInputPending) return;
+        const track = getTrack();
+        if (insideAssembly(track)) {
+          hasScrolledAssembly = true;
+          lastActivity = performance.now();
+        }
+        userInputPending = false;
+      });
+    };
+
+    const onScroll = () => {
+      const track = getTrack();
+      if (!track) return;
+      const y = window.scrollY;
+      if (y < track.top) {
+        hasScrolledAssembly = false;
+        userInputPending = false;
+        stop();
+        return;
+      }
+      if (userInputPending && insideAssembly(track, y)) {
+        hasScrolledAssembly = true;
+        lastActivity = performance.now();
+      }
+      if (y >= track.end - 1 || store.assembled) stop();
+    };
+
+    USER_EVENTS.forEach((event) => window.addEventListener(event, onUserInput, { passive: true }));
+    window.addEventListener('scroll', onScroll, { passive: true });
 
     const tick = (now) => {
       raf = requestAnimationFrame(tick);
-      const dt = lastNow ? Math.min(0.05, (now - lastNow) / 1000) : 0;
+      const dt = lastNow ? Math.min(0.25, (now - lastNow) / 1000) : 0;
       lastNow = now;
-      const el = ref.current;
-      if (!el || !store.sequence) return;
-
-      if (!running && hasScrolled && !store.assembled && now - lastActivity >= AUTO_IDLE_MS) {
-        running = true;
+      const track = getTrack();
+      if (!track) {
+        stop();
+        return;
       }
-      const track = el.offsetHeight - window.innerHeight;
-      const trackEnd = el.offsetTop + track; // the sequence now starts below the hero
-      if (running && window.scrollY >= trackEnd - 1) {
-        running = false; // the end of the track: stay here
+      const y = window.scrollY;
+      if (!insideAssembly(track, y) || store.assembled) {
+        if (y < track.top) hasScrolledAssembly = false;
+        stop();
+        return;
       }
-      fx.autoScroll = running;
 
+      if (!running && hasScrolledAssembly && now - lastActivity >= AUTO_IDLE_MS) running = true;
       if (running && now >= nextSpeedAt) {
-        speedTarget = 1.5 + Math.random() * 1.5; // 1.5x to 3x
+        speedTarget = 1.5 + Math.random() * 1.5;
         nextSpeedAt = now + 900 + Math.random() * 1600;
       }
+      fx.autoScroll = running;
       speedMul += (speedTarget - speedMul) * (1 - Math.exp(-dt * 2));
-      const target = running && track > 0 ? (track / AUTO_RUN_MS) * 1000 * speedMul : 0;
-      // ease the speed in and out so the glide starts and ends softly
+      const target = running ? (track.range / AUTO_RUN_MS) * 1000 * speedMul : 0;
       velocity += (target - velocity) * (1 - Math.exp(-dt * 1.5));
       if (Math.abs(velocity) < 0.5) {
         velocity = 0;
@@ -173,7 +238,9 @@ function useAutoScroll(ref) {
 
     return () => {
       cancelAnimationFrame(raf);
-      USER_EVENTS.forEach((e) => window.removeEventListener(e, cancel));
+      USER_EVENTS.forEach((event) => window.removeEventListener(event, onUserInput));
+      window.removeEventListener('scroll', onScroll);
+      fx.autoScroll = false;
     };
   }, [ref]);
 }
@@ -221,12 +288,19 @@ export default function Site({ cabin, heroReady = false }) {
   const veilRef = useRef(null);
   useEffect(() => {
     store.veil = veilRef.current;
+    // The hero never auto-scrolls; only the assembly hook opts in after manual entry.
+    fx.autoScroll = false;
+    return () => {
+      fx.autoScroll = false;
+    };
   }, []);
-  // A soft veil pulse hides the hero <-> studio world swap.
+  // Flux Lines now masks the scroll-linked hero <-> studio handoff; reserve the veil pulse for resets.
   const prevAct = useRef(act);
   useEffect(() => {
     if (prevAct.current === act) return;
+    const previous = prevAct.current;
     prevAct.current = act;
+    if (previous === 'hero' || act === 'hero') return;
     const veil = store.veil;
     veil?.classList.add('is-on');
     const id = setTimeout(() => veil?.classList.remove('is-on'), 650);
@@ -293,7 +367,7 @@ export default function Site({ cabin, heroReady = false }) {
                 fontSize={ASSEMBLY_STROKE_SIZE}
                 fontWeight={STROKE_WEIGHT}
                 letterSpacing={0}
-                style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                style={{ fontFamily: "'VIP Hala', 'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
               />
             </div>
           </div>
@@ -303,7 +377,7 @@ export default function Site({ cabin, heroReady = false }) {
         <div className="hero-brand" dir="ltr">
           <div className={`hero-brand-lockup ${brandOn ? 'is-on' : ''}`} aria-hidden={!brandOn}>
             <div className="hero-logo">
-              <img className="hero-logo-img" src="/brand/logo-mark.webp" alt="" width="56" height="56" decoding="async" />
+              <img className="hero-logo-img" src="/brand/logo-mark.webp" alt="" width="947" height="693" decoding="async" />
               <span className="hero-word">C<span className="a">A</span>MAC</span>
             </div>
             <div className="hero-tag" dir="rtl">شروع از ۱۳۹۳</div>
@@ -331,7 +405,7 @@ export default function Site({ cabin, heroReady = false }) {
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
                   letterSpacing={0}
-                  style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                  style={{ fontFamily: "'VIP Hala', 'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
                 />
               </div>
               <div className="camac-stroke-line" aria-hidden="true">
@@ -349,7 +423,7 @@ export default function Site({ cabin, heroReady = false }) {
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
                   letterSpacing={0}
-                  style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                  style={{ fontFamily: "'VIP Hala', 'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
                 />
               </div>
               <div className="camac-stroke-line" aria-hidden="true">
@@ -367,7 +441,7 @@ export default function Site({ cabin, heroReady = false }) {
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
                   letterSpacing={0}
-                  style={{ fontFamily: "'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
+                  style={{ fontFamily: "'VIP Hala', 'Noto Kufi Arabic', system-ui, sans-serif", direction: 'rtl', unicodeBidi: 'plaintext' }}
                 />
               </div>
             </div>
@@ -417,7 +491,7 @@ export default function Site({ cabin, heroReady = false }) {
 
       <footer id="contact" className="sfooter interactive">
         <div className="sfooter-inner">
-          <img className="sfooter-logo" src="/brand/logo.webp" alt={brand.name} width="110" height="110" decoding="async" />
+          <img className="sfooter-logo" src="/brand/logo-inverse.webp" alt={brand.name} width="1264" height="1082" decoding="async" />
 
           <ul className="sfooter-contact">
             {footer.contact.map((row) => (

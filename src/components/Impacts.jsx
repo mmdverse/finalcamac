@@ -44,6 +44,7 @@ class Cloud {
   constructor({ max, additive, depthWrite = false }) {
     this.max = max;
     this.cursor = 0;
+    this.activeIndices = [];
     this.pool = Array.from({ length: max }, () => ({
       alive: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0,
       life: 0, maxLife: 1, s0: 0.05, s1: 0.1, a0: 0.5, drag: 1, grav: 0,
@@ -74,14 +75,22 @@ class Cloud {
   }
 
   spawn(o) {
-    const p = this.pool[this.cursor];
+    const index = this.cursor;
+    const p = this.pool[index];
     this.cursor = (this.cursor + 1) % this.max;
+    if (!p.alive) this.activeIndices.push(index);
     Object.assign(p, { alive: true, life: o.life, maxLife: o.life, gain: 1, hot: false }, o);
   }
 
   step(dt) {
+    const active = this.activeIndices;
+    if (!active.length) {
+      this.geo.setDrawRange(0, 0);
+      return false;
+    }
     let n = 0;
-    for (let i = 0; i < this.max; i++) {
+    for (let a = 0; a < active.length; a++) {
+      const i = active[a];
       const p = this.pool[i];
       if (!p.alive) continue;
       p.life -= dt;
@@ -119,18 +128,34 @@ class Cloud {
         this.col[n * 3 + 1] = p.g;
         this.col[n * 3 + 2] = p.b;
       }
+      active[n] = i;
       n++;
     }
+    active.length = n;
     this.geo.setDrawRange(0, n);
-    this.geo.attributes.position.needsUpdate = true;
-    this.geo.attributes.aSize.needsUpdate = true;
-    this.geo.attributes.aAlpha.needsUpdate = true;
-    this.geo.attributes.aColor.needsUpdate = true;
+    if (n) {
+      markAttributeRange(this.geo.attributes.position, n * 3);
+      markAttributeRange(this.geo.attributes.aSize, n);
+      markAttributeRange(this.geo.attributes.aAlpha, n);
+      markAttributeRange(this.geo.attributes.aColor, n * 3);
+    }
+    return n > 0;
   }
 }
 
+function markAttributeRange(attribute, count) {
+  if (attribute.clearUpdateRanges) {
+    attribute.clearUpdateRanges();
+    attribute.addUpdateRange(0, count);
+  } else if (attribute.updateRange) {
+    attribute.updateRange.offset = 0;
+    attribute.updateRange.count = count;
+  }
+  attribute.needsUpdate = true;
+}
+
 export default function Impacts() {
-  const { camera, gl } = useThree();
+  const { camera, gl, invalidate } = useThree();
   const clouds = useMemo(() => ({
     dust: new Cloud({ max: 4200, additive: false }),
     core: new Cloud({ max: 4000, additive: true }),
@@ -138,16 +163,22 @@ export default function Impacts() {
   }), []);
 
   useFrame((_, dt) => {
+    const hasQueue = fx.queue.length > 0;
+    const hasParticles = clouds.dust.activeIndices.length + clouds.core.activeIndices.length + clouds.glow.activeIndices.length > 0;
+    if (!hasQueue && !hasParticles) return;
+
     const step = Math.min(dt, 1 / 30);
     clouds.dust.material.uniforms.uScale.value = gl.domElement.height / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2));
     clouds.core.material.uniforms.uScale.value = clouds.dust.material.uniforms.uScale.value;
     clouds.glow.material.uniforms.uScale.value = clouds.dust.material.uniforms.uScale.value;
 
-    while (fx.queue.length) spawnImpact(clouds, fx.queue.shift());
+    for (let i = 0; i < fx.queue.length; i++) spawnImpact(clouds, fx.queue[i]);
+    fx.queue.length = 0;
 
-    clouds.dust.step(step);
-    clouds.core.step(step);
-    clouds.glow.step(step);
+    const dustActive = clouds.dust.step(step);
+    const coreActive = clouds.core.step(step);
+    const glowActive = clouds.glow.step(step);
+    if (dustActive || coreActive || glowActive) invalidate();
   });
 
   return (

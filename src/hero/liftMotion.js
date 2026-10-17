@@ -1,13 +1,13 @@
 import * as THREE from 'three';
 
-/** Named, bounded motion settings for the open, surface-mounted elevator assembly. */
+/** Named motion settings for the counterweighted lift: the car starts high and descends first. */
 export const HERO_LIFT_MOTION = Object.freeze({
   cycleSeconds: 12,
-  travelMeters: 2.47,
-  bottomDwellSeconds: 1,
-  ascentSeconds: 5,
+  travelMeters: 2.4,
   topDwellSeconds: 1,
   descentSeconds: 5,
+  bottomDwellSeconds: 1,
+  ascentSeconds: 5,
   surfaceY: 0.03,
 });
 
@@ -16,19 +16,24 @@ const smooth = (value) => {
   return t * t * (3 - 2 * t);
 };
 
-/** Smooth elevator displacement in metres from the GLB car's authored rest position. */
+/** Smooth travel magnitude in metres; the rig applies it down to the car and up to the weight. */
 export function liftTravelAt(seconds) {
   const {
-    cycleSeconds, travelMeters, bottomDwellSeconds, ascentSeconds,
-    topDwellSeconds, descentSeconds,
+    cycleSeconds,
+    travelMeters,
+    topDwellSeconds,
+    descentSeconds,
+    bottomDwellSeconds,
+    ascentSeconds,
   } = HERO_LIFT_MOTION;
   const phase = ((seconds % cycleSeconds) + cycleSeconds) % cycleSeconds;
-  const ascentEnd = bottomDwellSeconds + ascentSeconds;
-  const descentStart = ascentEnd + topDwellSeconds;
-  const descentEnd = descentStart + descentSeconds;
-  if (phase < bottomDwellSeconds) return 0;
-  if (phase < ascentEnd) return travelMeters * smooth((phase - bottomDwellSeconds) / ascentSeconds);
-  if (phase < descentStart) return travelMeters;
-  if (phase < descentEnd) return travelMeters * (1 - smooth((phase - descentStart) / descentSeconds));
+  const descentEnd = topDwellSeconds + descentSeconds;
+  const ascentStart = descentEnd + bottomDwellSeconds;
+  const ascentEnd = ascentStart + ascentSeconds;
+
+  if (phase < topDwellSeconds) return 0;
+  if (phase < descentEnd) return travelMeters * smooth((phase - topDwellSeconds) / descentSeconds);
+  if (phase < ascentStart) return travelMeters;
+  if (phase < ascentEnd) return travelMeters * (1 - smooth((phase - ascentStart) / ascentSeconds));
   return 0;
 }
