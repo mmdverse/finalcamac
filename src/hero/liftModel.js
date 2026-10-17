@@ -44,7 +44,7 @@ function boundsWithout(root, excludedGroups) {
   return bounds;
 }
 
-function styleMaterials(root, yellow) {
+function styleMaterials(root, yellow, { softenLargeSurfaceAo = false } = {}) {
   const copies = new Map();
   let recoloredMaterials = 0;
   let recoloredMeshes = 0;
@@ -60,6 +60,11 @@ function styleMaterials(root, yellow) {
       if (!material) return material;
       if (!copies.has(material)) {
         const copy = material.clone();
+        // The CAD AO atlases become harsh speckle at phone scale on broad painted sheets.
+        // Keep their geometry and color, but soften that baked texture in the cinematic clone.
+        if (softenLargeSurfaceAo && copy.aoMap && /(?:panel|sheet|floor)/i.test(copy.name)) {
+          copy.aoMapIntensity = 0.15;
+        }
         if (isSourceGreen(copy)) {
           copy.color.set(yellow);
           recoloredMaterials += 1;
@@ -198,7 +203,7 @@ export function attachHeroCabin(rig, sourceCabinScene) {
   sourceCabinScene.updateMatrixWorld(true, true);
   const cabin = sourceCabinScene.clone(true);
   cabin.name = 'Hero_Cabin_Pro_V6';
-  const materialStats = styleMaterials(cabin, '#ffc21a');
+  const materialStats = styleMaterials(cabin, '#ffc21a', { softenLargeSurfaceAo: true });
   const cabinSourceBounds = objectBounds(cabin, 'Cabin Pro model');
   const cabinSize = cabinSourceBounds.getSize(new THREE.Vector3());
   const yokeLowerY = rig.userData.motionYokeLocalBounds.min[1];

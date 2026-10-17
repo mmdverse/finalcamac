@@ -93,7 +93,7 @@ function SplashCursor({
         halfFloat = gl.getExtension('OES_texture_half_float');
         supportLinearFiltering = gl.getExtension('OES_texture_half_float_linear');
       }
-      gl.clearColor(0.0, 0.0, 0.0, 1.0);
+      gl.clearColor(0.0, 0.0, 0.0, 0.0);
 
       const halfFloatTexType = isWebGL2 ? gl.HALF_FLOAT : halfFloat && halfFloat.HALF_FLOAT_OES;
       let formatRGBA;
@@ -536,7 +536,7 @@ function SplashCursor({
           gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
         }
         if (clear) {
-          gl.clearColor(0.0, 0.0, 0.0, 1.0);
+          gl.clearColor(0.0, 0.0, 0.0, 0.0);
           gl.clear(gl.COLOR_BUFFER_BIT);
         }
         gl.drawElements(gl.TRIANGLES, 6, gl.UNSIGNED_SHORT, 0);
@@ -711,9 +711,31 @@ function SplashCursor({
       if (now - lastInputTime < TRAIL_ACTIVE_MS) {
         animationFrameId.current = requestAnimationFrame(updateFrame);
       } else {
+        // The fluid values have decayed; clear both buffers and the transparent overlay so
+        // the last framebuffer cannot leave a frozen yellow stain on the page.
+        clearFluidState();
         isRunning = false;
         animationFrameId.current = null;
       }
+    }
+
+    function clearFluidState() {
+      if (gl.isContextLost?.()) return;
+      gl.disable(gl.BLEND);
+      const buffers = [
+        dye?.read, dye?.write, velocity?.read, velocity?.write,
+        pressure?.read, pressure?.write, divergence, curl,
+      ];
+      for (const target of buffers) {
+        if (!target?.fbo) continue;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+        gl.viewport(0, 0, target.width, target.height);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+      gl.clearColor(0, 0, 0, 0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
     }
 
     function resizeCanvas() {
@@ -811,6 +833,12 @@ function SplashCursor({
     }
 
     function render(target) {
+      if (target == null) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.enable(gl.BLEND);
       drawDisplay(target);
@@ -1060,6 +1088,8 @@ function SplashCursor({
         isRunning = false;
       } else if (performance.now() - lastInputTime < TRAIL_ACTIVE_MS) {
         wake();
+      } else {
+        clearFluidState();
       }
     };
 
