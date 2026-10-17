@@ -378,6 +378,7 @@ export default function Site({ cabin, heroReady = false }) {
           <div className={`hero-brand-lockup ${brandOn ? 'is-on' : ''}`} aria-hidden={!brandOn}>
             <div className="hero-logo">
               <img className="hero-logo-img" src="/brand/logo-fa.webp" alt="CAMAC Elevator" width="1000" height="888" decoding="async" />
+              <span className="hero-logo-sheen" aria-hidden="true" />
             </div>
             <div className="hero-tag" dir="rtl">شروع از ۱۳۹۳</div>
           </div>

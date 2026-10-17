@@ -9,6 +9,8 @@ import {
   attachHeroMotor,
   createLiftRig,
   HERO_CABIN_FLOOR_CLEARANCE,
+  HERO_GUIDE_RAIL_NAMES,
+  HERO_GUIDE_RAIL_TOP_CLEARANCE_METERS,
   HERO_LIFT_DISPLAY_SCALE,
 } from '../src/hero/liftModel.js';
 import { HERO_LIFT_MOTION, liftTravelAt } from '../src/hero/liftMotion.js';
@@ -175,6 +177,14 @@ const fixedFrameBounds = new THREE.Box3(
   new THREE.Vector3(...rig.userData.fixedFrameBounds.min),
   new THREE.Vector3(...rig.userData.fixedFrameBounds.max),
 );
+const expectedGuideRailTopY = fixedFrameBounds.max.y - HERO_GUIDE_RAIL_TOP_CLEARANCE_METERS * HERO_LIFT_DISPLAY_SCALE;
+for (const name of HERO_GUIDE_RAIL_NAMES) {
+  const guideRail = rig.getObjectByName(name);
+  assert.ok(guideRail, `authored guide rail “${name}” is present`);
+  const guideRailBounds = new THREE.Box3().setFromObject(guideRail);
+  assertClose(guideRailBounds.min.y, fixedFrameBounds.min.y, 0.003, `${name} keeps its authored bottom endpoint`);
+  assertClose(guideRailBounds.max.y, expectedGuideRailTopY, 0.003, `${name} reaches the annotated upper stop`);
+}
 const motionEnvelopeBounds = new THREE.Box3(
   new THREE.Vector3(...rig.userData.surfaceBounds.min),
   new THREE.Vector3(...rig.userData.surfaceBounds.max),
@@ -247,6 +257,7 @@ approx(liftTravelAt(12), 0);
 
 console.log('PASS: desktop/mobile scaffold GLBs retain the full named CAD hierarchy and matching 1.987 × 7.915 × 1.714 m bounds.');
 console.log('PASS: Cabin Pro desktop/mobile bounds match at 1.42 × 4.031 × 1.372 m and fit on the T9 rail axis.');
+console.log(`PASS: all ${HERO_GUIDE_RAIL_NAMES.length} T9/T5 guide rails are extended to the marked upper stop without moving their bases.`);
 console.log(`PASS: ${rig.userData.recoloredMaterials} shared source-green scaffold material(s) are recolored CAMAC yellow; fixed scaffold rests on the plaza.`);
 console.log('PASS: extracted Draco BM300-2 only (1 node, 1 mesh, 7 primitives) is seated on the named upper motor supports and stays fixed.');
 console.log('PASS: cabin and authored yoke descend together 2.4 m while the counterweight rises 2.4 m, with both stops inside the frame.');

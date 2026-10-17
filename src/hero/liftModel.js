@@ -8,7 +8,14 @@ export const HERO_CABIN_FLOOR_CLEARANCE = 0.03;
 const ASSEMBLY_NAME = '00_Full_Assembly';
 const YOKE_NAME = 'مدل_یوک_بندی';
 const WEIGHT_NAME = '0_Weight';
-const RAIL_NAMES = ['Rail_T9-1', 'Rail_T9-2'];
+const CAR_RAIL_NAMES = ['Rail_T9-1', 'Rail_T9-2'];
+export const HERO_GUIDE_RAIL_NAMES = Object.freeze([
+  ...CAR_RAIL_NAMES,
+  'Rail_T5-1',
+  'Rail_T5-2',
+]);
+// The red annotation ends about half a metre below the scaffold's top edge.
+export const HERO_GUIDE_RAIL_TOP_CLEARANCE_METERS = 0.52;
 const BOX_EPSILON = 1e-5;
 
 const isSourceGreen = (material) => {
@@ -22,9 +29,9 @@ function requireObject(root, name, description) {
   return object;
 }
 
-function objectBounds(object, description) {
+function objectBounds(object, description, precise = false) {
   object.updateWorldMatrix(true, true);
-  const bounds = new THREE.Box3().setFromObject(object);
+  const bounds = new THREE.Box3().setFromObject(object, precise);
   if (bounds.isEmpty()) throw new Error(`Full Assembly GLB: ${description} has no renderable bounds`);
   return bounds;
 }
@@ -102,6 +109,54 @@ function motionEnvelope(rig) {
   return envelope;
 }
 
+/** Extend all four authored guide rails to the red-marked stopping level. */
+function extendGuideRails(rig, frameBounds) {
+  const rigScale = rig.getWorldScale(new THREE.Vector3()).y;
+  if (!(rigScale > 0)) throw new Error('Hero scaffold has an invalid scale for the guide-rail extension');
+  const targetTopY = frameBounds.max.y - HERO_GUIDE_RAIL_TOP_CLEARANCE_METERS * rigScale;
+
+  for (const name of HERO_GUIDE_RAIL_NAMES) {
+    const rail = requireObject(rig, name, 'guide rail');
+    const before = objectBounds(rail, `${name} guide rail`);
+    const currentLength = before.max.y - before.min.y;
+    const targetLength = targetTopY - before.min.y;
+    if (!(targetLength > currentLength)) {
+      throw new Error(`Hero scaffold: target extension for “${name}” does not reach above the authored rail`);
+    }
+
+    const railUp = new THREE.Vector3(0, 1, 0)
+      .applyQuaternion(rail.getWorldQuaternion(new THREE.Quaternion()))
+      .normalize();
+    if (railUp.y < 0.999) {
+      throw new Error(`Hero scaffold: “${name}” is not aligned with the vertical guide axis`);
+    }
+
+    const parent = rail.parent;
+    if (!parent) throw new Error(`Hero scaffold: “${name}” has no parent transform`);
+    const parentUp = new THREE.Vector3(0, 1, 0)
+      .applyQuaternion(parent.getWorldQuaternion(new THREE.Quaternion()))
+      .normalize();
+    const localYToWorldY = parent.getWorldScale(new THREE.Vector3()).y * parentUp.y;
+    if (!(localYToWorldY > 0)) {
+      throw new Error(`Hero scaffold: “${name}” cannot be extended upward in world space`);
+    }
+
+    rail.scale.y *= targetLength / currentLength;
+    rig.updateMatrixWorld(true, true);
+    const stretched = objectBounds(rail, `${name} extended guide rail`);
+    // Preserve the authored bottom endpoint even if a future rail mesh has a nonzero local origin.
+    rail.position.y += (before.min.y - stretched.min.y) / localYToWorldY;
+    rig.updateMatrixWorld(true, true);
+
+    const seated = objectBounds(rail, `${name} extended guide rail`);
+    if (Math.abs(seated.min.y - before.min.y) > 1e-4 || Math.abs(seated.max.y - targetTopY) > 1e-4) {
+      throw new Error(`Hero scaffold: “${name}” did not retain its base or reach the marked rail height`);
+    }
+  }
+
+  return targetTopY;
+}
+
 /**
  * Clone the complete scaffold, keeping the CAD-authored fixed frame intact while
  * separating its named car yoke and counterweight for opposite Y-axis travel.
@@ -114,7 +169,7 @@ export function createLiftRig(sourceScene, paletteYellow) {
   const rig = sourceAssembly.clone(true);
   const movingYoke = requireObject(rig, YOKE_NAME, 'moving car yoke');
   const sourceWeight = requireObject(rig, WEIGHT_NAME, 'counterweight');
-  const rails = RAIL_NAMES.map((name) => requireObject(rig, name, 'car guide rail'));
+  const rails = CAR_RAIL_NAMES.map((name) => requireObject(rig, name, 'car guide rail'));
 
   // The midpoint between the two T9 guide rails is the car axis, not the centre of the
   // asymmetric assembly's overall AABB (which includes the counterweight and machinery).
@@ -146,6 +201,8 @@ export function createLiftRig(sourceScene, paletteYellow) {
   // Ground the fixed frame rather than a travelling part; the rail-axis midpoint becomes
   // the plaza origin so narrow-screen yaw keeps the lift centred above the floor rings.
   const fixedBoundsAtOrigin = boundsWithout(rig, movingGroups);
+  const guideRailTopAtOrigin = extendGuideRails(rig, fixedBoundsAtOrigin);
+  rig.updateMatrixWorld(true, true);
   rig.position.set(
     -railAxis.x * HERO_LIFT_DISPLAY_SCALE,
     HERO_LIFT_MOTION.surfaceY - fixedBoundsAtOrigin.min.y,
@@ -180,6 +237,8 @@ export function createLiftRig(sourceScene, paletteYellow) {
     min: fixedFrameBounds.min.toArray(),
     max: fixedFrameBounds.max.toArray(),
   };
+  rig.userData.guideRailNames = [...HERO_GUIDE_RAIL_NAMES];
+  rig.userData.guideRailTopY = guideRailTopAtOrigin + rig.position.y;
   rig.userData.fullAssemblyBounds = {
     min: fullAssemblyBounds.min.toArray(),
     max: fullAssemblyBounds.max.toArray(),
@@ -207,7 +266,7 @@ export function attachHeroMotor(rig, sourceMotorScene) {
   const motorSupportBounds = new THREE.Box3().makeEmpty();
   rig.traverse((object) => {
     if (!object.name.startsWith('4mm_Motor')) return;
-    motorSupportBounds.expandByObject(object);
+    motorSupportBounds.expandByObject(object, true);
   });
   if (motorSupportBounds.isEmpty()) {
     throw new Error('Hero scaffold: no CAD-authored “4mm Motor …” support parts were found');
@@ -223,7 +282,9 @@ export function attachHeroMotor(rig, sourceMotorScene) {
   rig.add(motor);
   rig.updateMatrixWorld(true, true);
 
-  const motorBeforeMount = objectBounds(motor, 'BM300-2 motor');
+  // This motor is rotated relative to its local axes. AABB-corner bounds invent a
+  // bottom point that is not on the mesh, leaving a visible gap above the supports.
+  const motorBeforeMount = objectBounds(motor, 'BM300-2 motor', true);
   const scale = rig.getWorldScale(new THREE.Vector3()).y;
   if (!(scale > 0)) throw new Error('Hero scaffold has an invalid scale for the BM300-2 mount');
   // The motor stays on the fixed scaffold (not the moving cabin car). Its authored X/Z
@@ -231,7 +292,10 @@ export function attachHeroMotor(rig, sourceMotorScene) {
   motor.position.y += (motorSupportBounds.max.y - motorBeforeMount.min.y) / scale;
   rig.updateMatrixWorld(true, true);
 
-  const motorBounds = objectBounds(motor, 'mounted BM300-2 motor');
+  const motorBounds = objectBounds(motor, 'mounted BM300-2 motor', true);
+  if (Math.abs(motorBounds.min.y - motorSupportBounds.max.y) > 1e-4) {
+    throw new Error('BM300-2 mount: the motor contact surface is not seated on the fixed support rails');
+  }
   const priorSurfaceBounds = rig.userData.surfaceBounds;
   const surfaceBounds = priorSurfaceBounds
     ? new THREE.Box3(
