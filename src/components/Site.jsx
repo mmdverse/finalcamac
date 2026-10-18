@@ -10,6 +10,7 @@ import { useStore } from '../lib/useStore';
 import CalculatorSection from './CalculatorSection';
 import StrokeText from './ReactBits/StrokeText';
 import LogoWithSweep from './LogoWithSweep';
+import logoContours from '../data/logoContours.json';
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -289,6 +290,7 @@ function HeroLogo({ active }) {
       imageClassName="hero-logo-img"
       width={1000}
       height={888}
+      contourPaths={logoContours.fa}
       active={active}
     />
   );
@@ -513,6 +515,7 @@ export default function Site({ cabin, heroReady = false }) {
             imageClassName="sfooter-logo"
             width={1000}
             height={759}
+            contourPaths={logoContours.en}
             active
           />
 
