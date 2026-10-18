@@ -18,6 +18,7 @@ const ASSEMBLED_AT = 0.985;
 // Shared type and color treatment for Hero and assembly StrokeText.
 const STROKE_FILL = '#FFFFFF';
 const STROKE_OUTLINE = '#555B5E';
+const HERO_EMPHASIS_COLOR = '#FBEB24';
 const STROKE_WEIGHT = 700;
 const STROKE_WIDTH = 0.6;
 const HERO_STROKE_SIZE = 38; // 2x the previous 19 px size
@@ -443,6 +444,8 @@ export default function Site({ cabin, heroReady = false }) {
                   text="حرکت میدهد"
                   strokeColor={STROKE_OUTLINE}
                   fillColor={STROKE_FILL}
+                  highlightText="حرکت"
+                  highlightColor={HERO_EMPHASIS_COLOR}
                   strokeWidth={STROKE_WIDTH}
                   drawDuration={1.05}
                   fillDelay={0.08}

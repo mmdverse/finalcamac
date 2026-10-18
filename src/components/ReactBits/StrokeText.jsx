@@ -16,6 +16,8 @@ const StrokeText = ({
   text = DEFAULT_TEXT,
   strokeColor = '#A78BFA',
   fillColor = '#F8FAFC',
+  highlightText = '',
+  highlightColor = '#FBEB24',
   strokeWidth = 1.4,
   drawDuration = 1.6,
   fillDelay = 0.2,
@@ -40,6 +42,18 @@ const StrokeText = ({
   const wipeId = `stroke-text-wipe-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
   const characters = useMemo(() => Array.from(String(text ?? '')), [text]);
+  const highlightedCharacters = useMemo(() => {
+    const target = Array.from(String(highlightText ?? ''));
+    const matches = new Set();
+    if (!target.length) return matches;
+
+    for (let start = 0; start <= characters.length - target.length; start += 1) {
+      if (target.every((char, offset) => characters[start + offset] === char)) {
+        target.forEach((_, offset) => matches.add(start + offset));
+      }
+    }
+    return matches;
+  }, [characters, highlightText]);
 
   const dash = Math.max(fontSize * 7, 200);
 
@@ -242,7 +256,11 @@ const StrokeText = ({
           clipPath={fillMode === 'wipe' && box ? `url(#${wipeId})` : undefined}
         >
           {characters.map((char, index) => (
-            <tspan data-fill-char key={`f-${index}`}>
+            <tspan
+              data-fill-char
+              key={`f-${index}`}
+              style={highlightedCharacters.has(index) ? { fill: highlightColor } : undefined}
+            >
               {char}
             </tspan>
           ))}

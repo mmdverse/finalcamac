@@ -488,9 +488,8 @@ a.sfooter-item:hover { color: #e0a800; }
 .hero-logo {
   position: relative;
   isolation: isolate;
-  display: flex;
-  align-items: center;
-  gap: 0;
+  display: block;
+  width: fit-content; /* Keep the alpha canvas bounded to the logo, not the full-width lockup. */
 }
 .hero-logo-img {
   position: relative;
