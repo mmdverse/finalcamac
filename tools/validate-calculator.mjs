@@ -34,6 +34,26 @@ assert.equal(doorPass.B9, 'قابل اجرا');
 const sourceAnomaly = calculateWorkbook(workbook, { J5: 110, K5: 4, L5: 'سانترال' });
 assert.equal(sourceAnomaly.J7, 1111);
 
+// Employer's revised workbook makes side-mounted counterweight offsets depend on door-leaf count.
+for (const [inputs, expected] of [
+  [{ U5: 'بغل', O5: 163, Q5: 1, S5: 2 }, 114],
+  [{ U5: 'بغل', O5: 163, Q5: 1, S5: 3 }, 104],
+  [{ U5: 'بغل', O5: 190, Q5: 2, S5: 2 }, 94],
+  [{ U5: 'بغل', O5: 190, Q5: 2, S5: 3 }, 84],
+]) {
+  assert.equal(calculateWorkbook(workbook, inputs).N7, expected);
+}
+for (const [inputs, expected] of [
+  [{ U40: 'بغل', R42: 163, Q40: 1, S40: 2 }, 114],
+  [{ U40: 'بغل', R42: 163, Q40: 1, S40: 3 }, 104],
+  [{ U40: 'بغل', R42: 190, Q40: 2, S40: 2 }, 94],
+  [{ U40: 'بغل', R42: 190, Q40: 2, S40: 3 }, 84],
+]) {
+  assert.equal(calculateWorkbook(workbook, inputs).R45, expected);
+}
+assert.equal(baseline.N7, 104, 'rear-mounted counterweight result remains unchanged');
+assert.equal(baseline.R45, 114, 'rear-mounted counterweight result remains unchanged');
+
 const travel = calculateWorkbook(workbook, { AV5: 10, AW5: 3.6, AX5: 0, AY5: 3, AZ5: 3 });
 assert.ok(Math.abs(travel.AV7 - 40.4) < 1e-10);
 assert.ok(Math.abs(travel.AV9 - 29) < 1e-10);
@@ -94,4 +114,5 @@ for (const cell of Object.values(workbook.cells)) {
 console.log(`PASS: ${workbook.formulaCount}/${workbook.formulaCount} formula caches matched the source workbook.`);
 console.log('PASS: 10 calculator definitions; input references resolve to source input cells.');
 console.log('PASS: boundary, source-anomaly, travel-time and iron-price scenarios.');
+console.log('PASS: revised side-counterweight offsets for 1/2 cabin doors and 2/3 leaves in both calculator directions.');
 console.log('PASS: field order, select options, contextual hints and red status for insufficient shaft width.');
