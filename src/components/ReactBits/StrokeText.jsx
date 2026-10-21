@@ -5,6 +5,7 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 import './StrokeText.css';
+import { buildStrokeTextUnits } from './strokeTextUnits.js';
 
 if (typeof window !== 'undefined') {
   gsap.registerPlugin(ScrollTrigger);
@@ -41,19 +42,13 @@ const StrokeText = ({
   const rawId = useId();
   const wipeId = `stroke-text-wipe-${rawId.replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
-  const characters = useMemo(() => Array.from(String(text ?? '')), [text]);
-  const highlightedCharacters = useMemo(() => {
-    const target = Array.from(String(highlightText ?? ''));
-    const matches = new Set();
-    if (!target.length) return matches;
-
-    for (let start = 0; start <= characters.length - target.length; start += 1) {
-      if (target.every((char, offset) => characters[start + offset] === char)) {
-        target.forEach((_, offset) => matches.add(start + offset));
-      }
-    }
-    return matches;
-  }, [characters, highlightText]);
+  // Arabic-script joining is contextual: keep each complete word in one SVG
+  // text run so Safari/WebKit can apply the font's init/medi/fina substitutions.
+  // Latin scripts retain the original per-character tracing animation.
+  const textUnits = useMemo(
+    () => buildStrokeTextUnits(text, highlightText),
+    [text, highlightText]
+  );
 
   const dash = Math.max(fontSize * 7, 200);
 
@@ -108,14 +103,14 @@ const StrokeText = ({
     return () => {
       cancelled = true;
     };
-  }, [characters, fontSize, fontWeight, letterSpacing, strokeWidth]);
+  }, [textUnits, fontSize, fontWeight, letterSpacing, strokeWidth]);
 
   useEffect(() => {
     const root = rootRef.current;
     if (typeof window === 'undefined' || !root || !box) return undefined;
 
-    const strokes = gsap.utils.toArray(root.querySelectorAll('[data-stroke-char]'));
-    const fills = gsap.utils.toArray(root.querySelectorAll('[data-fill-char]'));
+    const strokes = gsap.utils.toArray(root.querySelectorAll('[data-stroke-unit]'));
+    const fills = gsap.utils.toArray(root.querySelectorAll('[data-fill-unit]'));
     const wipe = wipeRectRef.current;
     if (!strokes.length) return undefined;
 
@@ -206,7 +201,7 @@ const StrokeText = ({
       timeline?.kill();
       gsap.killTweensOf(targets);
     };
-  }, [box, dash, drawDuration, fillDelay, stagger, ease, trigger, fillMode, reverse]);
+  }, [box, dash, drawDuration, fillDelay, stagger, ease, trigger, fillMode, reverse, textUnits]);
 
   const viewBox = box ? `${box.x} ${box.y} ${box.width} ${box.height}` : `0 ${-fontSize} 600 ${fontSize * 1.3}`;
 
@@ -239,9 +234,12 @@ const StrokeText = ({
           strokeLinecap="round"
           style={fontStyle}
         >
-          {characters.map((char, index) => (
-            <tspan data-stroke-char key={`s-${index}`}>
-              {char}
+          {textUnits.map((unit, index) => (
+            <tspan
+              data-stroke-unit={unit.animated ? '' : undefined}
+              key={`s-${index}`}
+            >
+              {unit.text}
             </tspan>
           ))}
         </text>
@@ -255,13 +253,13 @@ const StrokeText = ({
           style={fontStyle}
           clipPath={fillMode === 'wipe' && box ? `url(#${wipeId})` : undefined}
         >
-          {characters.map((char, index) => (
+          {textUnits.map((unit, index) => (
             <tspan
-              data-fill-char
+              data-fill-unit={unit.animated ? '' : undefined}
               key={`f-${index}`}
-              style={highlightedCharacters.has(index) ? { fill: highlightColor } : undefined}
+              style={unit.highlighted ? { fill: highlightColor } : undefined}
             >
-              {char}
+              {unit.text}
             </tspan>
           ))}
         </text>
