@@ -10,7 +10,7 @@ function findRanges(value, target) {
     const start = value.indexOf(target, searchFrom);
     if (start < 0) break;
     ranges.push({ start, end: start + target.length });
-    searchFrom = start + Math.max(1, target.length);
+    searchFrom = start + 1;
   }
   return ranges;
 }

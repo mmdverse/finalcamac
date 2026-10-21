@@ -34,4 +34,11 @@ assert.deepEqual(
   'Latin substring highlighting must remain character-accurate'
 );
 
+const overlappingUnits = buildStrokeTextUnits('AAAA', 'AAA');
+assert.deepEqual(
+  overlappingUnits.filter(unit => unit.highlighted).map(unit => unit.text),
+  ['A', 'A', 'A', 'A'],
+  'overlapping highlight matches must preserve the original matching behavior'
+);
+
 console.log('StrokeText validation passed: Persian word shaping runs, ZWNJ, highlight, and Latin per-character animation.');
