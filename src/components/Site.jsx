@@ -151,6 +151,8 @@ function useAutoScroll(ref) {
     let velocity = 0;
     let lastNow = 0;
     let raf = 0;
+    let inputRaf = 0;
+    let idleTimer = 0;
     let speedMul = 1;
     let speedTarget = 1;
     let nextSpeedAt = 0;
@@ -164,10 +166,70 @@ function useAutoScroll(ref) {
     };
     const insideAssembly = (track = getTrack(), y = window.scrollY) =>
       Boolean(track && track.range > 0 && y >= track.top && y < track.end - 1 && !store.assembled);
+    const clearIdleTimer = () => {
+      if (!idleTimer) return;
+      window.clearTimeout(idleTimer);
+      idleTimer = 0;
+    };
     const stop = () => {
       running = false;
       fx.autoScroll = false;
       velocity = 0;
+      clearIdleTimer();
+      if (raf) {
+        window.cancelAnimationFrame(raf);
+        raf = 0;
+      }
+    };
+
+    const tick = (now) => {
+      raf = 0;
+      const dt = lastNow ? Math.min(0.25, (now - lastNow) / 1000) : 0;
+      lastNow = now;
+      const track = getTrack();
+      if (!track) {
+        stop();
+        return;
+      }
+      const y = window.scrollY;
+      if (!insideAssembly(track, y) || store.assembled) {
+        if (y < track.top) hasScrolledAssembly = false;
+        stop();
+        return;
+      }
+      if (!running) return;
+
+      if (now >= nextSpeedAt) {
+        speedTarget = 1.5 + Math.random() * 1.5;
+        nextSpeedAt = now + 900 + Math.random() * 1600;
+      }
+      fx.autoScroll = true;
+      speedMul += (speedTarget - speedMul) * (1 - Math.exp(-dt * 2));
+      const target = (track.range / AUTO_RUN_MS) * 1000 * speedMul;
+      velocity += (target - velocity) * (1 - Math.exp(-dt * 1.5));
+      if (Math.abs(velocity) < 0.5) velocity = 0;
+      else window.scrollTo({ top: window.scrollY + velocity * dt, behavior: 'instant' });
+      if (running && !raf) raf = window.requestAnimationFrame(tick);
+    };
+
+    const scheduleAutoStart = () => {
+      clearIdleTimer();
+      if (!hasScrolledAssembly || store.assembled || !insideAssembly()) return;
+      const wait = Math.max(0, AUTO_IDLE_MS - (performance.now() - lastActivity));
+      idleTimer = window.setTimeout(() => {
+        idleTimer = 0;
+        const track = getTrack();
+        if (!hasScrolledAssembly || !track || !insideAssembly(track) || store.assembled) return;
+        const remaining = AUTO_IDLE_MS - (performance.now() - lastActivity);
+        if (remaining > 0) {
+          scheduleAutoStart();
+          return;
+        }
+        running = true;
+        fx.autoScroll = true;
+        lastNow = 0;
+        if (!raf) raf = window.requestAnimationFrame(tick);
+      }, wait);
     };
 
     const onUserInput = () => {
@@ -175,12 +237,15 @@ function useAutoScroll(ref) {
       lastActivity = performance.now();
       if (insideAssembly()) hasScrolledAssembly = true;
       userInputPending = true;
-      requestAnimationFrame(() => {
+      if (inputRaf) return;
+      inputRaf = window.requestAnimationFrame(() => {
+        inputRaf = 0;
         if (!userInputPending) return;
         const track = getTrack();
         if (insideAssembly(track)) {
           hasScrolledAssembly = true;
           lastActivity = performance.now();
+          scheduleAutoStart();
         }
         userInputPending = false;
       });
@@ -199,6 +264,7 @@ function useAutoScroll(ref) {
       if (userInputPending && insideAssembly(track, y)) {
         hasScrolledAssembly = true;
         lastActivity = performance.now();
+        scheduleAutoStart();
       }
       if (y >= track.end - 1 || store.assembled) stop();
     };
@@ -206,41 +272,9 @@ function useAutoScroll(ref) {
     USER_EVENTS.forEach((event) => window.addEventListener(event, onUserInput, { passive: true }));
     window.addEventListener('scroll', onScroll, { passive: true });
 
-    const tick = (now) => {
-      raf = requestAnimationFrame(tick);
-      const dt = lastNow ? Math.min(0.25, (now - lastNow) / 1000) : 0;
-      lastNow = now;
-      const track = getTrack();
-      if (!track) {
-        stop();
-        return;
-      }
-      const y = window.scrollY;
-      if (!insideAssembly(track, y) || store.assembled) {
-        if (y < track.top) hasScrolledAssembly = false;
-        stop();
-        return;
-      }
-
-      if (!running && hasScrolledAssembly && now - lastActivity >= AUTO_IDLE_MS) running = true;
-      if (running && now >= nextSpeedAt) {
-        speedTarget = 1.5 + Math.random() * 1.5;
-        nextSpeedAt = now + 900 + Math.random() * 1600;
-      }
-      fx.autoScroll = running;
-      speedMul += (speedTarget - speedMul) * (1 - Math.exp(-dt * 2));
-      const target = running ? (track.range / AUTO_RUN_MS) * 1000 * speedMul : 0;
-      velocity += (target - velocity) * (1 - Math.exp(-dt * 1.5));
-      if (Math.abs(velocity) < 0.5) {
-        velocity = 0;
-        return;
-      }
-      window.scrollTo({ top: window.scrollY + velocity * dt, behavior: 'instant' });
-    };
-    raf = requestAnimationFrame(tick);
-
     return () => {
-      cancelAnimationFrame(raf);
+      stop();
+      if (inputRaf) window.cancelAnimationFrame(inputRaf);
       USER_EVENTS.forEach((event) => window.removeEventListener(event, onUserInput));
       window.removeEventListener('scroll', onScroll);
       fx.autoScroll = false;

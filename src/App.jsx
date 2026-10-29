@@ -1,22 +1,41 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
-import { useProgress } from '@react-three/drei';
-import Site from './components/Site';
-import SplashCursor from './components/SplashCursor';
-import FluxLines from './components/ReactBits/FluxLines';
 import { getCabin, brand } from './data/cabins';
 import { useStore } from './lib/useStore';
 import { store } from './lib/store';
 
-// Scene (three.js + R3F) is code-split so the DOM shell paints before the WebGL bundle.
+// WebGL scene and secondary visual effects are split so their code can load on demand.
 const CabinScene = lazy(() => import('./components/CabinScene'));
+const Site = lazy(() => import('./components/Site'));
+const SplashCursor = lazy(() => import('./components/SplashCursor'));
+const FluxLines = lazy(() => import('./components/ReactBits/FluxLines'));
 const HERO_START_DELAY_MS = 1250; // loader fades for 1.1 s and unmounts at 1.2 s
 
 export default function App() {
   const cabin = getCabin('pro-v6');
-  const [modelReady, setModelReady] = useState(false);
-  const { progress: loadProgress } = useProgress();
-  const sceneReady = modelReady && loadProgress >= 100;
-  const onModelReady = useCallback(() => setModelReady(true), []);
+  const [mountScene, setMountScene] = useState(false);
+  const [heroModelReady, setHeroModelReady] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
+  const onHeroReady = useCallback(() => setHeroModelReady(true), []);
+  const onLoadProgress = useCallback((value) => setLoadProgress(value), []);
+
+  // Paint the DOM shell/loader once before starting the optional WebGL bundle.
+  useEffect(() => {
+    let timer = 0;
+    const frame = window.requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setMountScene(true), 0);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      if (timer) window.clearTimeout(timer);
+    };
+  }, []);
+
+  // Latch the first completed load. The studio assets are intentionally deferred until handoff,
+  // so their later progress updates must not bring the intro loader back.
+  useEffect(() => {
+    if (heroModelReady && loadProgress >= 100) setSceneReady(true);
+  }, [heroModelReady, loadProgress]);
 
   // Wait for the scene assets to finish too, then begin a fresh take after the loader exits.
   useEffect(() => {
@@ -33,19 +52,50 @@ export default function App() {
   // The fluid splash belongs to the main section only, never the hero or Flux handoff.
   const act = useStore((s) => s.act);
   const transitionActive = useStore((s) => s.heroTransitionActive);
+  const [allowSplash, setAllowSplash] = useState(() =>
+    typeof window !== 'undefined' && !window.matchMedia('(max-width: 768px), (pointer: coarse)').matches,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 768px), (pointer: coarse)');
+    const update = () => setAllowSplash(!query.matches);
+    update();
+    if (query.addEventListener) query.addEventListener('change', update);
+    else query.addListener?.(update);
+    return () => {
+      if (query.removeEventListener) query.removeEventListener('change', update);
+      else query.removeListener?.(update);
+    };
+  }, []);
 
   return (
     <>
       <div className="stage" aria-hidden="true">
-        <Suspense fallback={null}>
-          <CabinScene cabin={cabin} onModelReady={onModelReady} skipModel={skipModel} />
-        </Suspense>
-        {/* Fluid splash of the original component: touch on mobile, pointer on desktop only. Yellow. */}
-        {act === 'site' && !transitionActive && <SplashCursor RAINBOW_MODE={false} COLOR="#FFD400" />}
+        {mountScene && (
+          <Suspense fallback={null}>
+            <CabinScene
+              cabin={cabin}
+              onHeroReady={onHeroReady}
+              onLoadProgress={onLoadProgress}
+              skipModel={skipModel}
+            />
+          </Suspense>
+        )}
+        {/* A second fluid WebGL simulation competes with the main Canvas on touch devices;
+            keep the decorative splash for desktop pointers only. */}
+        {act === 'site' && !transitionActive && allowSplash && (
+          <Suspense fallback={null}>
+            <SplashCursor RAINBOW_MODE={false} COLOR="#FFD400" />
+          </Suspense>
+        )}
       </div>
       <FluxTransition />
-      <Site cabin={cabin} heroReady={sceneReady} />
-      <Loader done={sceneReady} brand={brand.name} />
+      {mountScene && (
+        <Suspense fallback={null}>
+          <Site cabin={cabin} heroReady={sceneReady} />
+        </Suspense>
+      )}
+      <Loader done={sceneReady} brand={brand.name} progress={loadProgress} />
     </>
   );
 }
@@ -56,25 +106,27 @@ function FluxTransition() {
   if (!active) return null;
   return (
     <div className="flux-transition" aria-hidden="true">
-      <FluxLines
-        colors={['#f2b632', '#625743', '#ead9b5']}
-        speed={0.34}
-        scale={1.35}
-        turbulence={0.55}
-        fluidity={0.12}
-        rimWidth={0.15}
-        sharpness={2.4}
-        shimmer={0.8}
-        glow={1.55}
-        lineWidth={0.45}
-        flowDirection="up"
-        mouseInteraction={false}
-        clickSwirl={false}
-        intro={false}
-        lightMode
-        transparent
-        dpr={1}
-      />
+      <Suspense fallback={null}>
+        <FluxLines
+          colors={['#f2b632', '#625743', '#ead9b5']}
+          speed={0.34}
+          scale={1.35}
+          turbulence={0.55}
+          fluidity={0.12}
+          rimWidth={0.15}
+          sharpness={2.4}
+          shimmer={0.8}
+          glow={1.55}
+          lineWidth={0.45}
+          flowDirection="up"
+          mouseInteraction={false}
+          clickSwirl={false}
+          intro={false}
+          lightMode
+          transparent
+          dpr={1}
+        />
+      </Suspense>
     </div>
   );
 }
@@ -83,8 +135,7 @@ function FluxTransition() {
  * Loading screen: only the brand video on black, with a white glitch bar along the bottom edge.
  * It fades out once the 3D model is ready and the video has finished.
  */
-function Loader({ done, brand }) {
-  const { progress } = useProgress();
+function Loader({ done, brand, progress }) {
   const [unmounted, setUnmounted] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   const hidden = done; // the real load decides when the screen goes, not the video length

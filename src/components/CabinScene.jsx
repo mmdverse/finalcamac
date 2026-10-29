@@ -1,8 +1,7 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { ContactShadows, PerformanceMonitor, useGLTF } from '@react-three/drei';
-import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
+import { ContactShadows, PerformanceMonitor, useGLTF, useProgress } from '@react-three/drei';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import CabinModel from './CabinModel';
@@ -18,27 +17,20 @@ const GROUND = '#b7b3a9';
 const ORIGIN = new THREE.Vector3(0, 0, 0);
 const UP = new THREE.Vector3(0, 1, 0);
 
-const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches;
+const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px), (pointer: coarse)').matches;
+const DesktopPost = lazy(() => import('./PostProcessing'));
 
-export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
+export default function CabinScene({ cabin, onHeroReady, onLoadProgress, skipModel = false }) {
   const [bounds, setBounds] = useState(null);
   const partBoxesRef = useRef(new Map());
   const act = useStore((s) => s.act);
   const assembled = useStore((s) => s.assembled);
 
-  // QA mode (?nogl): no cabin GLB, so the loader dismisses right away.
-  useEffect(() => {
-    if (skipModel) onModelReady?.();
-  }, [skipModel, onModelReady]);
-
-  const handleReady = useCallback(
-    ({ bounds: b, partBoxes }) => {
-      partBoxesRef.current = partBoxes;
-      setBounds(b);
-      onModelReady?.();
-    },
-    [onModelReady],
-  );
+  // Hero assets gate the intro; the interactive studio clone is deferred until the visitor enters it.
+  const handleReady = useCallback(({ bounds: b, partBoxes }) => {
+    partBoxesRef.current = partBoxes;
+    setBounds(b);
+  }, []);
 
   const groundY = bounds ? bounds.min.y : -1;
 
@@ -46,7 +38,7 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
     <Canvas
       shadows
       frameloop={assembled ? 'demand' : 'always'}
-      dpr={isMobile ? [1, 1.6] : [1, 1.5]}
+      dpr={isMobile ? [1, 1.25] : [1, 1.5]}
       resize={{ debounce: 250, scroll: false }} // the mobile address bar resizes the page: do not redraw on every step
       gl={{
         antialias: true,
@@ -62,34 +54,38 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
       }}
     >
       <Environment />
+      <LoadProgressBridge onProgress={onLoadProgress} />
       {act === 'hero' && <HeroDprGuard />}
       {/* Storyboard hero: owns the camera while act === 'hero'. */}
-      <HeroScene cabin={cabin} skipCabin={skipModel} />
-      {/* The studio (stage + cabin assembly) only shows in the site act. */}
-      <group visible={act === 'site'}>
-        <Lights />
-        <Suspense fallback={null}>
-          <StageSet />
-        </Suspense>
-        {!skipModel && (
+      <HeroScene cabin={cabin} skipCabin={skipModel} onReady={onHeroReady} />
+      {/* Defer the studio clone and stage until the visitor enters the site act. The Hero already
+          owns the cached cabin GLB, so this avoids duplicate startup traversal/material work. */}
+      {act === 'site' && (
+        <group>
+          <Lights />
           <Suspense fallback={null}>
-            <CabinModel cabin={cabin} onReady={handleReady} />
+            <StageSet />
           </Suspense>
-        )}
-        {bounds && assembled && (
-          <ContactShadows
-            frames={1}
-            position={[0, groundY + 0.002, 0]}
-            opacity={0.5}
-            scale={7}
-            blur={2.6}
-            far={3}
-            resolution={384}
-            color="#2a2620"
-          />
-        )}
-        <ScanRing />
-      </group>
+          {!skipModel && (
+            <Suspense fallback={null}>
+              <CabinModel cabin={cabin} onReady={handleReady} />
+            </Suspense>
+          )}
+          {bounds && assembled && (
+            <ContactShadows
+              frames={1}
+              position={[0, groundY + 0.002, 0]}
+              opacity={0.5}
+              scale={7}
+              blur={2.6}
+              far={3}
+              resolution={isMobile ? 256 : 384}
+              color="#2a2620"
+            />
+          )}
+          <ScanRing />
+        </group>
+      )}
       <StudioAtmo active={act === 'site'} />
       <CameraRig cabin={cabin} partBoxesRef={partBoxesRef} />
       <OrbitRig />
@@ -98,13 +94,20 @@ export default function CabinScene({ cabin, onModelReady, skipModel = false }) {
   );
 }
 
+/** Keep the DOM loader's progress bar without importing Three.js in the app entry bundle. */
+function LoadProgressBridge({ onProgress }) {
+  const { progress } = useProgress();
+  useEffect(() => { onProgress?.(progress); }, [progress, onProgress]);
+  return null;
+}
+
 /** Start crisp; if the device actually dips, trade pixel density down temporarily instead. */
 function HeroDprGuard() {
   const setDpr = useThree((state) => state.setDpr);
   const declines = useRef(0);
-  const sharpDpr = isMobile ? 1.6 : 1.5;
-  const balancedDpr = isMobile ? 1.3 : 1.25;
-  const safeDpr = 1.15;
+  const sharpDpr = isMobile ? 1.25 : 1.5;
+  const balancedDpr = isMobile ? 1.1 : 1.25;
+  const safeDpr = isMobile ? 1 : 1.15;
 
   useEffect(() => () => setDpr(sharpDpr), [setDpr, sharpDpr]);
 
@@ -258,7 +261,7 @@ function Lights() {
         intensity={1.25}
         color="#fff4dc"
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={isMobile ? [512, 512] : [1024, 1024]}
         shadow-camera-left={-3}
         shadow-camera-right={3}
         shadow-camera-top={3}
@@ -513,19 +516,11 @@ const smoothStep = (x) => {
 /** Bloom for sparks and bright highlights; soft vignette for a cinematic frame. */
 function Post() {
   const isHero = useStore((s) => s.act === 'hero');
-  // Render the four-second hero directly; the studio-only post stack is too costly during motion.
-  if (isHero) return null;
-  if (isMobile) {
-    return (
-      <EffectComposer multisampling={0}>
-        <Vignette offset={0.3} darkness={0.4} />
-      </EffectComposer>
-    );
-  }
+  // Avoid loading or rendering the full-screen post stack on mobile or during the hero.
+  if (isHero || isMobile) return null;
   return (
-    <EffectComposer multisampling={2}>
-        <Bloom intensity={0.32} luminanceThreshold={0.92} luminanceSmoothing={0.2} mipmapBlur />
-      <Vignette offset={0.3} darkness={0.4} />
-    </EffectComposer>
+    <Suspense fallback={null}>
+      <DesktopPost />
+    </Suspense>
   );
 }

@@ -13,8 +13,8 @@ import { pickModelUrl } from '../lib/modelQuality';
 useGLTF.setDecoderPath('/draco/gltf/');
 
 const HERO_SCAFFOLD_MODEL = Object.freeze({
-  desktop: '/models/camac-assembly.desktop.glb',
-  mobile: '/models/camac-assembly.mobile.glb',
+  desktop: '/models/camac-assembly.desktop.glb?v=perf-20261030',
+  mobile: '/models/camac-assembly.mobile.glb?v=perf-20261030',
 });
 const HERO_MOTOR_MODEL = '/models/hero-motor.glb';
 
@@ -505,13 +505,13 @@ function buildHeroWorld() {
 }
 
 /** The Hero can still run in the lightweight ?nogl QA mode without loading the cabin GLB. */
-function HeroLift({ rigRef, cabin, skipCabin }) {
+function HeroLift({ rigRef, cabin, skipCabin, onReady }) {
   return skipCabin || !cabin?.model
-    ? <HeroLiftFrame rigRef={rigRef} />
-    : <HeroLiftWithCabin rigRef={rigRef} cabin={cabin} />;
+    ? <HeroLiftFrame rigRef={rigRef} onReady={onReady} />
+    : <HeroLiftWithCabin rigRef={rigRef} cabin={cabin} onReady={onReady} />;
 }
 
-function HeroLiftFrame({ rigRef }) {
+function HeroLiftFrame({ rigRef, onReady }) {
   const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
   const { scene: motorScene } = useGLTF(HERO_MOTOR_MODEL);
   const rig = useMemo(() => {
@@ -519,11 +519,12 @@ function HeroLiftFrame({ rigRef }) {
     attachHeroMotor(assembledRig, motorScene);
     return assembledRig;
   }, [liftScene, motorScene]);
+  useEffect(() => { onReady?.(); }, [rig, onReady]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
 /** Load the selected scaffold tier and mount the Cabin Pro, fixed motor, and moving car. */
-function HeroLiftWithCabin({ rigRef, cabin }) {
+function HeroLiftWithCabin({ rigRef, cabin, onReady }) {
   const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
   const { scene: cabinScene } = useGLTF(pickModelUrl(cabin.model));
   const { scene: motorScene } = useGLTF(HERO_MOTOR_MODEL);
@@ -533,6 +534,7 @@ function HeroLiftWithCabin({ rigRef, cabin }) {
     attachHeroMotor(assembledRig, motorScene);
     return assembledRig;
   }, [liftScene, cabinScene, motorScene]);
+  useEffect(() => { onReady?.(); }, [rig, onReady]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
@@ -562,7 +564,7 @@ const UPV = new THREE.Vector3(0, 1, 0);
  * framing, and a click sends a ripple across the plaza the cabin answers to.
  * QA: `?freeze=<s>` or window.__FREEZE pins the timeline for screenshots.
  */
-export default function HeroScene({ cabin, skipCabin = false }) {
+export default function HeroScene({ cabin, skipCabin = false, onReady }) {
   const { camera, scene, gl } = useThree();
   const world = useMemo(() => buildHeroWorld(), []);
   const liftRef = useRef(null);
@@ -711,7 +713,7 @@ export default function HeroScene({ cabin, skipCabin = false }) {
     <>
       <primitive object={world.group} />
       <Suspense fallback={null}>
-        <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} />
+        <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} onReady={onReady} />
       </Suspense>
     </>
   );

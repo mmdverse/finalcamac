@@ -35,6 +35,26 @@ function readGlbJson(filePath) {
   return JSON.parse(bytes.subarray(20, 20 + jsonLength).toString('utf8'));
 }
 
+function nodeHierarchySignature(json) {
+  return json.nodes.map((node) => ({
+    name: node.name ?? null,
+    children: node.children ?? [],
+    mesh: node.mesh ?? null,
+    translation: node.translation ?? null,
+    rotation: node.rotation ?? null,
+    scale: node.scale ?? null,
+    matrix: node.matrix ?? null,
+  }));
+}
+
+function triangleCount(json) {
+  return json.meshes.reduce((total, mesh) => total + mesh.primitives.reduce((meshTotal, primitive) => {
+    if ((primitive.mode ?? 4) !== 4) return meshTotal;
+    const accessorIndex = primitive.indices ?? primitive.attributes.POSITION;
+    return meshTotal + Math.floor(json.accessors[accessorIndex].count / 3);
+  }, 0), 0);
+}
+
 /**
  * Build a lightweight bounds-only Three.js proxy from glTF accessor bounds. This lets the
  * validator exercise the real named hierarchy and runtime mounting code without decoding the
@@ -125,6 +145,20 @@ const scaffoldMobileJson = readGlbJson(scaffoldMobilePath);
 const cabinDesktopJson = readGlbJson(cabinDesktopPath);
 const cabinMobileJson = readGlbJson(cabinMobilePath);
 const heroMotorJson = readGlbJson(heroMotorPath);
+
+assert.deepEqual(nodeHierarchySignature(scaffoldMobileJson), nodeHierarchySignature(scaffoldDesktopJson), 'mobile scaffold retains the desktop node names, parentage, mesh assignments, and transforms');
+assert.deepEqual(nodeHierarchySignature(cabinMobileJson), nodeHierarchySignature(cabinDesktopJson), 'mobile Cabin Pro retains the desktop node names, parentage, mesh assignments, and transforms');
+assert.deepEqual(scaffoldMobileJson.meshes.map((mesh) => mesh.name ?? null), scaffoldDesktopJson.meshes.map((mesh) => mesh.name ?? null), 'both scaffold tiers retain mesh names and order');
+assert.deepEqual(cabinMobileJson.meshes.map((mesh) => mesh.name ?? null), cabinDesktopJson.meshes.map((mesh) => mesh.name ?? null), 'both Cabin Pro tiers retain mesh names and order');
+
+const scaffoldDesktopTriangles = triangleCount(scaffoldDesktopJson);
+const scaffoldMobileTriangles = triangleCount(scaffoldMobileJson);
+const cabinDesktopTriangles = triangleCount(cabinDesktopJson);
+const cabinMobileTriangles = triangleCount(cabinMobileJson);
+assert.ok(scaffoldDesktopTriangles < 800_000, `desktop scaffold stays below 800k triangles (${scaffoldDesktopTriangles})`);
+assert.ok(scaffoldMobileTriangles < 550_000, `mobile scaffold stays below 550k triangles (${scaffoldMobileTriangles})`);
+assert.ok(cabinDesktopTriangles < 2_300_000, `desktop Cabin Pro stays below 2.3M triangles (${cabinDesktopTriangles})`);
+assert.ok(cabinMobileTriangles < 1_250_000, `mobile Cabin Pro stays below 1.25M triangles (${cabinMobileTriangles})`);
 
 assert.ok(scaffoldDesktopJson.extensionsRequired?.includes('KHR_draco_mesh_compression'), 'desktop scaffold uses local Draco compression');
 assert.ok(scaffoldMobileJson.extensionsRequired?.includes('KHR_draco_mesh_compression'), 'mobile scaffold uses local Draco compression');
@@ -255,8 +289,9 @@ approx(liftTravelAt(7), HERO_LIFT_MOTION.travelMeters);
 approx(liftTravelAt(9.5), HERO_LIFT_MOTION.travelMeters / 2);
 approx(liftTravelAt(12), 0);
 
-console.log('PASS: desktop/mobile scaffold GLBs retain the full named CAD hierarchy and matching 1.987 × 7.915 × 1.714 m bounds.');
-console.log('PASS: Cabin Pro desktop/mobile bounds match at 1.42 × 4.031 × 1.372 m and fit on the T9 rail axis.');
+console.log('PASS: desktop/mobile scaffold GLBs retain identical node/mesh names, hierarchy, transforms, and matching 1.987 × 7.915 × 1.714 m bounds.');
+console.log('PASS: Cabin Pro desktop/mobile GLBs retain identical node/mesh names, hierarchy, transforms, and 1.42 × 4.031 × 1.372 m bounds.');
+console.log(`PASS: optimized triangle budgets — cabin ${cabinDesktopTriangles.toLocaleString()} desktop / ${cabinMobileTriangles.toLocaleString()} mobile; scaffold ${scaffoldDesktopTriangles.toLocaleString()} desktop / ${scaffoldMobileTriangles.toLocaleString()} mobile.`);
 console.log(`PASS: all ${HERO_GUIDE_RAIL_NAMES.length} T9/T5 guide rails are extended to the marked upper stop without moving their bases.`);
 console.log(`PASS: ${rig.userData.recoloredMaterials} shared source-green scaffold material(s) are recolored CAMAC yellow; fixed scaffold rests on the plaza.`);
 console.log('PASS: extracted Draco BM300-2 only (1 node, 1 mesh, 7 primitives) is seated on the named upper motor supports and stays fixed.');

@@ -103,10 +103,11 @@ export const cabins = [
   {
     id: 'pro-v6',
     name: 'Cabin Pro V6.3',
-    // Quality tiers: desktop textures capped at 2048px, mobile at 1024px (GPU memory).
+    // Optimized, versioned quality tiers: desktop textures capped at 1024px; mobile at 512px.
+    // Both retain the authored node hierarchy, part names, and real-world bounds.
     model: {
-      desktop: '/models/cabin-pro-v6.desktop.glb',
-      mobile: '/models/cabin-pro-v6.mobile.glb',
+      desktop: '/models/cabin-pro-v6.desktop.glb?v=perf-20261030',
+      mobile: '/models/cabin-pro-v6.mobile.glb?v=perf-20261030',
     },
     assembly: assemblySteps,
     cameraPath,
