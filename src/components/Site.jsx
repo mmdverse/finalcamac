@@ -46,7 +46,6 @@ function useActSwitch() {
       // CSS handles the full-composition blur/veil without rerendering the DOM on every scroll event.
       root.style.setProperty('--hero-fade', heroFade.toFixed(4));
       root.style.setProperty('--transition-blur', `${reducedMotion ? 0 : (12 * blurMix).toFixed(2)}px`);
-      root.style.setProperty('--flux-opacity', `${reducedMotion ? 0 : (0.84 * Math.pow(Math.sin(Math.PI * progress), 2)).toFixed(3)}`);
       store.heroTransition = reducedMotion ? 0 : progress;
 
       const act = window.scrollY > height * HERO_HANDOFF_AT ? 'site' : 'hero';
@@ -346,7 +345,7 @@ export default function Site({ cabin, heroReady = false }) {
       fx.autoScroll = false;
     };
   }, []);
-  // Flux Lines now masks the scroll-linked hero <-> studio handoff; reserve the veil pulse for resets.
+  // The camera pullback and blur handle the hero-to-studio handoff; reserve the veil pulse for resets.
   const prevAct = useRef(act);
   useEffect(() => {
     if (prevAct.current === act) return;
@@ -431,7 +430,7 @@ export default function Site({ cabin, heroReady = false }) {
             <HeroLogo active={brandOn} />
             <div className="hero-tag" dir="rtl">شروع از ۱۳۹۳</div>
           </div>
-          {heroReady && heroStrokeStarted && (
+          {heroReady && (
             <div
               className={`camac-stroke-message camac-hero-message ${heroStrokeVisible ? 'is-visible' : ''}`}
               dir="rtl"
@@ -445,11 +444,7 @@ export default function Site({ cabin, heroReady = false }) {
                   strokeColor={STROKE_OUTLINE}
                   fillColor={STROKE_FILL}
                   strokeWidth={STROKE_WIDTH}
-                  drawDuration={1.05}
-                  fillDelay={0.08}
-                  stagger={0.02}
-                  ease="power2.out"
-                  trigger="mount"
+                  trigger="none"
                   fillMode="fade"
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
@@ -463,11 +458,7 @@ export default function Site({ cabin, heroReady = false }) {
                   strokeColor={STROKE_OUTLINE}
                   fillColor={STROKE_FILL}
                   strokeWidth={STROKE_WIDTH}
-                  drawDuration={1.05}
-                  fillDelay={0.08}
-                  stagger={0.02}
-                  ease="power2.out"
-                  trigger="mount"
+                  trigger="none"
                   fillMode="fade"
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}
@@ -483,11 +474,7 @@ export default function Site({ cabin, heroReady = false }) {
                   highlightText="حرکت"
                   highlightColor={HERO_EMPHASIS_COLOR}
                   strokeWidth={STROKE_WIDTH}
-                  drawDuration={1.05}
-                  fillDelay={0.08}
-                  stagger={0.02}
-                  ease="power2.out"
-                  trigger="mount"
+                  trigger="none"
                   fillMode="fade"
                   fontSize={HERO_STROKE_SIZE}
                   fontWeight={STROKE_WEIGHT}

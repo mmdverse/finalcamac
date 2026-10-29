@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { getCabin, brand } from './data/cabins';
 import { useStore } from './lib/useStore';
 import { store } from './lib/store';
@@ -7,17 +7,23 @@ import { store } from './lib/store';
 const CabinScene = lazy(() => import('./components/CabinScene'));
 const Site = lazy(() => import('./components/Site'));
 const SplashCursor = lazy(() => import('./components/SplashCursor'));
-const FluxLines = lazy(() => import('./components/ReactBits/FluxLines'));
-const HERO_START_DELAY_MS = 1250; // loader fades for 1.1 s and unmounts at 1.2 s
+const HERO_START_DELAY_MS = 1250; // the loader fades for 1.1 s and unmounts at 1.2 s
 
 export default function App() {
   const cabin = getCabin('pro-v6');
   const [mountScene, setMountScene] = useState(false);
-  const [heroModelReady, setHeroModelReady] = useState(false);
-  const [sceneReady, setSceneReady] = useState(false);
+  const [heroFrameReady, setHeroFrameReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
-  const onHeroReady = useCallback(() => setHeroModelReady(true), []);
-  const onLoadProgress = useCallback((value) => setLoadProgress(value), []);
+  const heroFrameReadyRef = useRef(false);
+  const onHeroFrameReady = useCallback(() => {
+    if (heroFrameReadyRef.current) return;
+    heroFrameReadyRef.current = true;
+    setHeroFrameReady(true);
+  }, []);
+  const onLoadProgress = useCallback((value) => {
+    // Do not keep rerendering the React tree while large GLBs finish in the background.
+    if (!heroFrameReadyRef.current) setLoadProgress(value);
+  }, []);
 
   // Paint the DOM shell/loader once before starting the optional WebGL bundle.
   useEffect(() => {
@@ -31,25 +37,20 @@ export default function App() {
     };
   }, []);
 
-  // Latch the first completed load. The studio assets are intentionally deferred until handoff,
-  // so their later progress updates must not bring the intro loader back.
+  // Begin the cinematic as soon as its first hero frame can be shown. Model downloads continue
+  // in parallel and never hold the loading screen open until every Draco mesh has decoded.
   useEffect(() => {
-    if (heroModelReady && loadProgress >= 100) setSceneReady(true);
-  }, [heroModelReady, loadProgress]);
-
-  // Wait for the scene assets to finish too, then begin a fresh take after the loader exits.
-  useEffect(() => {
-    if (!sceneReady) {
+    if (!heroFrameReady) {
       store.heroStarted = false;
       return undefined;
     }
     store.heroStarted = false;
     const timer = window.setTimeout(() => store.set({ heroStarted: true }), HERO_START_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [sceneReady]);
+  }, [heroFrameReady]);
   // QA flag: /?nogl skips the heavy cabin GLB (hero-only runs on weak GPUs).
   const skipModel = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('nogl');
-  // The fluid splash belongs to the main section only, never the hero or Flux handoff.
+  // The fluid splash belongs to the main section only, never the hero-to-studio handoff.
   const act = useStore((s) => s.act);
   const transitionActive = useStore((s) => s.heroTransitionActive);
   const [allowSplash, setAllowSplash] = useState(() =>
@@ -75,7 +76,7 @@ export default function App() {
           <Suspense fallback={null}>
             <CabinScene
               cabin={cabin}
-              onHeroReady={onHeroReady}
+              onSceneReady={onHeroFrameReady}
               onLoadProgress={onLoadProgress}
               skipModel={skipModel}
             />
@@ -89,51 +90,19 @@ export default function App() {
           </Suspense>
         )}
       </div>
-      <FluxTransition />
       {mountScene && (
         <Suspense fallback={null}>
-          <Site cabin={cabin} heroReady={sceneReady} />
+          <Site cabin={cabin} heroReady={heroFrameReady} />
         </Suspense>
       )}
-      <Loader done={sceneReady} brand={brand.name} progress={loadProgress} />
+      <Loader done={heroFrameReady} brand={brand.name} progress={loadProgress} />
     </>
-  );
-}
-
-/** Scroll-linked ReactBits Flux Lines scrim; its WebGL context exists only during the handoff. */
-function FluxTransition() {
-  const active = useStore((s) => s.heroTransitionActive);
-  if (!active) return null;
-  return (
-    <div className="flux-transition" aria-hidden="true">
-      <Suspense fallback={null}>
-        <FluxLines
-          colors={['#f2b632', '#625743', '#ead9b5']}
-          speed={0.34}
-          scale={1.35}
-          turbulence={0.55}
-          fluidity={0.12}
-          rimWidth={0.15}
-          sharpness={2.4}
-          shimmer={0.8}
-          glow={1.55}
-          lineWidth={0.45}
-          flowDirection="up"
-          mouseInteraction={false}
-          clickSwirl={false}
-          intro={false}
-          lightMode
-          transparent
-          dpr={1}
-        />
-      </Suspense>
-    </div>
   );
 }
 
 /**
  * Loading screen: only the brand video on black, with a white glitch bar along the bottom edge.
- * It fades out once the 3D model is ready and the video has finished.
+ * It fades after the first hero frame is rendered; heavier GLB downloads continue in parallel.
  */
 function Loader({ done, brand, progress }) {
   const [unmounted, setUnmounted] = useState(false);

@@ -33,7 +33,6 @@
   --ease: cubic-bezier(0.2, 0.7, 0.1, 1);
   --hero-fade: 0;
   --transition-blur: 0px;
-  --flux-opacity: 0;
 }
 
 * { box-sizing: border-box; }
@@ -60,15 +59,6 @@ button { font: inherit; color: inherit; }
   filter: blur(var(--transition-blur, 0px));
 }
 .stage canvas { display: block; width: 100% !important; height: 100% !important; touch-action: pan-y; }
-
-/* Temporary full-screen Flux Lines shader: scroll-linked and click-through. */
-.flux-transition {
-  position: fixed;
-  inset: 0;
-  z-index: 2;
-  pointer-events: none;
-  opacity: var(--flux-opacity, 0);
-}
 
 /* ---------- Overlay: text is pass-through so the canvas stays hoverable ---------- */
 .site { position: relative; z-index: 1; pointer-events: none; }
@@ -392,7 +382,6 @@ a.sfooter-item:hover { color: #e0a800; }
 @media (prefers-reduced-motion: reduce) {
   .loader-bar { animation: none; }
   .stage, .hero-brand, .hero-cue { filter: none; }
-  .flux-transition { display: none; }
 }
 
 /* Back to top: appears once the cabin is complete and the page is scrolled down. */
@@ -449,7 +438,10 @@ a.sfooter-item:hover { color: #e0a800; }
   font-family: 'VIP Hala', 'Noto Kufi Arabic', system-ui, sans-serif;
   font-weight: 700;
 }
-.camac-hero-message { z-index: 8; }
+.camac-hero-message {
+  z-index: 8;
+  transition: opacity .9s var(--ease), transform .9s var(--ease);
+}
 .camac-assembly-message {
   top: clamp(20px, 4vh, 44px);
   z-index: 7;

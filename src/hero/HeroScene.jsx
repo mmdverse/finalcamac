@@ -8,6 +8,7 @@ import { HERO_CAMERA, HERO_ATMO, HERO_SECONDS, HERO_STORYBOARD_SECONDS, HERO_HAN
 import { liftTravelAt } from './liftMotion';
 import { applyLiftTravel, attachHeroCabin, attachHeroMotor, createLiftRig } from './liftModel';
 import { pickModelUrl } from '../lib/modelQuality';
+import { getCabin } from '../data/cabins';
 
 // Hero assembly, cabin, and isolated motor GLBs are Draco-compressed; use the local decoder.
 useGLTF.setDecoderPath('/draco/gltf/');
@@ -18,11 +19,21 @@ const HERO_SCAFFOLD_MODEL = Object.freeze({
 });
 const HERO_MOTOR_MODEL = '/models/hero-motor.glb';
 
+// Start the required Draco fetches together instead of waiting for the scaffold's suspense
+// render to reveal the next GLB request one by one. This does not block the first hero frame.
+if (typeof window !== 'undefined') {
+  useGLTF.preload(pickModelUrl(HERO_SCAFFOLD_MODEL));
+  useGLTF.preload(HERO_MOTOR_MODEL);
+  if (!new URLSearchParams(window.location.search).has('nogl')) {
+    useGLTF.preload(pickModelUrl(getCabin('pro-v6').model));
+  }
+}
+
 /**
  * The storyboard, rebuilt as a real 3D environment (not slides, not video).
  * Every asset below is a mesh/line/point in the scene; the narrative comes from
  * real changes of position, visibility and materials on a six-second authored beat scale,
- * compressed into a 4-second playback that begins only after the loading screen exits.
+ * compressed into a 4-second playback that begins after the first hero frame is rendered.
  *
  * Beats (see heroData.js): fog+particles -> line network -> wireframe city ->
  * open plaza and surface-mounted elevator -> yellow rings -> close passes -> wide brand frame.
@@ -504,14 +515,21 @@ function buildHeroWorld() {
   return { group, update, dispose, M };
 }
 
-/** The Hero can still run in the lightweight ?nogl QA mode without loading the cabin GLB. */
-function HeroLift({ rigRef, cabin, skipCabin, onReady }) {
-  return skipCabin || !cabin?.model
-    ? <HeroLiftFrame rigRef={rigRef} onReady={onReady} />
-    : <HeroLiftWithCabin rigRef={rigRef} cabin={cabin} onReady={onReady} />;
+/** The frame can appear before the large Cabin Pro GLB; ?nogl skips the cabin entirely. */
+function HeroLift({ rigRef, cabin, skipCabin }) {
+  return (
+    <>
+      <HeroLiftFrame rigRef={rigRef} />
+      {!skipCabin && cabin?.model && (
+        <Suspense fallback={null}>
+          <HeroCabin rigRef={rigRef} model={cabin.model} />
+        </Suspense>
+      )}
+    </>
+  );
 }
 
-function HeroLiftFrame({ rigRef, onReady }) {
+function HeroLiftFrame({ rigRef }) {
   const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
   const { scene: motorScene } = useGLTF(HERO_MOTOR_MODEL);
   const rig = useMemo(() => {
@@ -519,23 +537,17 @@ function HeroLiftFrame({ rigRef, onReady }) {
     attachHeroMotor(assembledRig, motorScene);
     return assembledRig;
   }, [liftScene, motorScene]);
-  useEffect(() => { onReady?.(); }, [rig, onReady]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
-/** Load the selected scaffold tier and mount the Cabin Pro, fixed motor, and moving car. */
-function HeroLiftWithCabin({ rigRef, cabin, onReady }) {
-  const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
-  const { scene: cabinScene } = useGLTF(pickModelUrl(cabin.model));
-  const { scene: motorScene } = useGLTF(HERO_MOTOR_MODEL);
-  const rig = useMemo(() => {
-    const assembledRig = createLiftRig(liftScene, PAL.yellow);
-    attachHeroCabin(assembledRig, cabinScene);
-    attachHeroMotor(assembledRig, motorScene);
-    return assembledRig;
-  }, [liftScene, cabinScene, motorScene]);
-  useEffect(() => { onReady?.(); }, [rig, onReady]);
-  return <primitive object={rig} ref={rigRef} />;
+/** Attach the heavy cabin after its own Suspense boundary resolves, without blocking the frame. */
+function HeroCabin({ rigRef, model }) {
+  const { scene: cabinScene } = useGLTF(pickModelUrl(model));
+  useEffect(() => {
+    const rig = rigRef.current;
+    if (rig) attachHeroCabin(rig, cabinScene);
+  }, [rigRef, cabinScene]);
+  return null;
 }
 
 /** Atmosphere (background + fog) sampled over the 6 s timeline. */
@@ -564,8 +576,9 @@ const UPV = new THREE.Vector3(0, 1, 0);
  * framing, and a click sends a ripple across the plaza the cabin answers to.
  * QA: `?freeze=<s>` or window.__FREEZE pins the timeline for screenshots.
  */
-export default function HeroScene({ cabin, skipCabin = false, onReady }) {
+export default function HeroScene({ cabin, skipCabin = false, onSceneReady }) {
   const { camera, scene, gl } = useThree();
+  const firstFrameReady = useRef(false);
   const world = useMemo(() => buildHeroWorld(), []);
   const liftRef = useRef(null);
   const tmp = useMemo(
@@ -593,7 +606,13 @@ export default function HeroScene({ cabin, skipCabin = false, onReady }) {
     if (world.group.visible !== hero) world.group.visible = hero;
     const liftRig = liftRef.current;
     if (liftRig && liftRig.visible !== hero) liftRig.visible = hero;
-    if (!hero) return;
+    if (!hero) {
+      if (!firstFrameReady.current) {
+        firstFrameReady.current = true;
+        onSceneReady?.();
+      }
+      return;
+    }
 
     const fr = window.__FREEZE != null ? window.__FREEZE : freezeParam;
     const playbackActive = store.heroStarted || fr != null;
@@ -707,13 +726,19 @@ export default function HeroScene({ cabin, skipCabin = false, onReady }) {
       scene.fog.near = tmp.atmo.near;
       scene.fog.far = tmp.atmo.far;
     }
+
+    // The procedural hero world is already renderable even if a large cabin GLB is still decoding.
+    if (!firstFrameReady.current) {
+      firstFrameReady.current = true;
+      onSceneReady?.();
+    }
   });
 
   return (
     <>
       <primitive object={world.group} />
       <Suspense fallback={null}>
-        <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} onReady={onReady} />
+        <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} />
       </Suspense>
     </>
   );

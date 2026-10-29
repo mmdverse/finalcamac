@@ -135,7 +135,8 @@ const StrokeText = ({
     };
 
     const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReducedMotion) {
+    // Static end state lets a parent fade the fully-filled SVG in at a precise camera cue.
+    if (prefersReducedMotion || trigger === 'none') {
       setEnd();
       return () => gsap.killTweensOf(targets);
     }
