@@ -487,6 +487,26 @@ export default function Site({ cabin, heroReady = false }) {
           <div className={`hero-address ${brandOn ? 'is-on' : ''}`} dir="rtl" aria-hidden={!brandOn}>
             قم، خیابان معلم شرقی، مجتمع عمرانیه، طبقه اول اداری، واحد ۱۱۹
           </div>
+          <a
+            className={`hero-calculator-button interactive ${brandOn ? 'is-on' : ''}`}
+            href="#calculator"
+            aria-hidden={!brandOn}
+            tabIndex={brandOn ? 0 : -1}
+            title="رفتن به ابزارهای محاسباتی کاماک"
+          >
+            <span className="hero-calculator-mark" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="5" y="2.75" width="14" height="18.5" rx="2.5" />
+                <path d="M8 6.5h8M8.5 11h.01M12 11h.01M15.5 11h.01M8.5 14.5h.01M12 14.5h.01M15.5 14.5h.01M8.5 18h7" />
+              </svg>
+            </span>
+            <span className="hero-calculator-label">ابزار محاسباتی کاماک</span>
+            <span className="hero-calculator-arrow" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5m6 6-6-6 6-6" />
+              </svg>
+            </span>
+          </a>
         </div>
 
         {/* Scroll cue of the final hero frame. */}
