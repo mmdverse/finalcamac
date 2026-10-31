@@ -1,4 +1,4 @@
-import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -8,6 +8,7 @@ import { HERO_CAMERA, HERO_ATMO, HERO_SECONDS, HERO_STORYBOARD_SECONDS, HERO_HAN
 import { liftTravelAt } from './liftMotion';
 import { applyLiftTravel, attachHeroCabin, attachHeroMotor, createLiftRig } from './liftModel';
 import { pickModelUrl } from '../lib/modelQuality';
+import { getCabin } from '../data/cabins';
 
 // Hero assembly, cabin, and isolated motor GLBs are Draco-compressed; use the local decoder.
 useGLTF.setDecoderPath('/draco/gltf/');
@@ -18,11 +19,14 @@ const HERO_SCAFFOLD_MODEL = Object.freeze({
 });
 const HERO_MOTOR_MODEL = '/models/hero-motor.glb';
 
-// Start the small scaffold/motor Draco fetches together; defer the heavy cabin GLB until the
-// first procedural frame is already visible so it cannot delay the initial scene or loader.
+// Start the required Draco fetches together instead of waiting for the scaffold's suspense
+// render to reveal the next GLB request one by one. This does not block the first hero frame.
 if (typeof window !== 'undefined') {
   useGLTF.preload(pickModelUrl(HERO_SCAFFOLD_MODEL));
   useGLTF.preload(HERO_MOTOR_MODEL);
+  if (!new URLSearchParams(window.location.search).has('nogl')) {
+    useGLTF.preload(pickModelUrl(getCabin('pro-v6').model));
+  }
 }
 
 /**
@@ -511,30 +515,21 @@ function buildHeroWorld() {
   return { group, update, dispose, M };
 }
 
-/** Show the lightweight frame first, then attach the large cabin as a non-blocking asset. */
-function HeroLift({ rigRef, cabin, skipCabin, onAssetError }) {
-  const [rig, setRig] = useState(null);
-  const onFrameReady = useCallback((readyRig) => setRig(readyRig), []);
-
+/** The frame can appear before the large Cabin Pro GLB; ?nogl skips the cabin entirely. */
+function HeroLift({ rigRef, cabin, skipCabin }) {
   return (
     <>
-      <OptionalHeroAssetBoundary onError={onAssetError}>
+      <HeroLiftFrame rigRef={rigRef} />
+      {!skipCabin && cabin?.model && (
         <Suspense fallback={null}>
-          <HeroLiftFrame rigRef={rigRef} onReady={onFrameReady} />
+          <HeroCabin rigRef={rigRef} model={cabin.model} />
         </Suspense>
-      </OptionalHeroAssetBoundary>
-      {!skipCabin && cabin?.model && rig && (
-        <OptionalHeroAssetBoundary onError={onAssetError}>
-          <Suspense fallback={null}>
-            <HeroCabin rig={rig} model={cabin.model} />
-          </Suspense>
-        </OptionalHeroAssetBoundary>
       )}
     </>
   );
 }
 
-function HeroLiftFrame({ rigRef, onReady }) {
+function HeroLiftFrame({ rigRef }) {
   const { scene: liftScene } = useGLTF(pickModelUrl(HERO_SCAFFOLD_MODEL));
   const { scene: motorScene } = useGLTF(HERO_MOTOR_MODEL);
   const rig = useMemo(() => {
@@ -542,35 +537,17 @@ function HeroLiftFrame({ rigRef, onReady }) {
     attachHeroMotor(assembledRig, motorScene);
     return assembledRig;
   }, [liftScene, motorScene]);
-  useEffect(() => { onReady?.(rig); }, [rig, onReady]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
-/** Attach the large Cabin Pro to the exact rig object after both GLBs are ready. */
-function HeroCabin({ rig, model }) {
+/** Attach the heavy cabin after its own Suspense boundary resolves, without blocking the frame. */
+function HeroCabin({ rigRef, model }) {
   const { scene: cabinScene } = useGLTF(pickModelUrl(model));
   useEffect(() => {
-    attachHeroCabin(rig, cabinScene);
-  }, [rig, cabinScene]);
+    const rig = rigRef.current;
+    if (rig) attachHeroCabin(rig, cabinScene);
+  }, [rigRef, cabinScene]);
   return null;
-}
-
-/** A failed optional GLB must not tear down the procedural hero or the rest of the site. */
-class OptionalHeroAssetBoundary extends Component {
-  state = { failed: false };
-
-  static getDerivedStateFromError() {
-    return { failed: true };
-  }
-
-  componentDidCatch(error) {
-    console.error('[CAMAC] Optional hero lift asset failed; continuing without the GLB.', error);
-    this.props.onError?.(error);
-  }
-
-  render() {
-    return this.state.failed ? null : this.props.children;
-  }
 }
 
 /** Atmosphere (background + fog) sampled over the 6 s timeline. */
@@ -599,7 +576,7 @@ const UPV = new THREE.Vector3(0, 1, 0);
  * framing, and a click sends a ripple across the plaza the cabin answers to.
  * QA: `?freeze=<s>` or window.__FREEZE pins the timeline for screenshots.
  */
-export default function HeroScene({ cabin, skipCabin = false, onSceneReady, onAssetError }) {
+export default function HeroScene({ cabin, skipCabin = false, onSceneReady }) {
   const { camera, scene, gl } = useThree();
   const firstFrameReady = useRef(false);
   const world = useMemo(() => buildHeroWorld(), []);
@@ -630,7 +607,7 @@ export default function HeroScene({ cabin, skipCabin = false, onSceneReady, onAs
     const liftRig = liftRef.current;
     if (liftRig && liftRig.visible !== hero) liftRig.visible = hero;
     if (!hero) {
-      if (!firstFrameReady.current && gl.info.render.frame > 0) {
+      if (!firstFrameReady.current) {
         firstFrameReady.current = true;
         onSceneReady?.();
       }
@@ -750,9 +727,8 @@ export default function HeroScene({ cabin, skipCabin = false, onSceneReady, onAs
       scene.fog.far = tmp.atmo.far;
     }
 
-    // useFrame runs before WebGL draws. The renderer frame counter proves that a previous
-    // procedural hero frame was drawn, so the cover never disappears before the canvas paints.
-    if (!firstFrameReady.current && gl.info.render.frame > 0) {
+    // The procedural hero world is already renderable even if a large cabin GLB is still decoding.
+    if (!firstFrameReady.current) {
       firstFrameReady.current = true;
       onSceneReady?.();
     }
@@ -761,7 +737,9 @@ export default function HeroScene({ cabin, skipCabin = false, onSceneReady, onAs
   return (
     <>
       <primitive object={world.group} />
-      <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} onAssetError={onAssetError} />
+      <Suspense fallback={null}>
+        <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} />
+      </Suspense>
     </>
   );
 }

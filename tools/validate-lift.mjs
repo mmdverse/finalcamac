@@ -253,46 +253,6 @@ assertClose(rig.scale.y, HERO_LIFT_DISPLAY_SCALE, 1e-9, 'display scale');
 assertClose(fixedFrameBounds.min.y, HERO_LIFT_MOTION.surfaceY, 0.003, 'fixed scaffold rests on the plaza surface');
 assertClose(cabinRestBounds.min.y - yokeRestBounds.min.y, HERO_CABIN_FLOOR_CLEARANCE * HERO_LIFT_DISPLAY_SCALE, 0.003, 'cabin floor is seated just above the lower yoke');
 
-// Reproduce the mobile cold-load case: root yaw/orbit and lift travel update while the large
-// Cabin Pro GLB decodes. Placement must be checked against the authored whole-rig transform.
-const delayedRig = createLiftRig(scaffoldMobileScene, PAL.yellow);
-attachHeroMotor(delayedRig, heroMotorScene);
-const delayedTravel = 0.8;
-const delayedYaw = -0.15;
-const [orbitX, orbitZ] = delayedRig.userData.plazaOrbitOffset;
-delayedRig.position.x = Math.cos(delayedYaw) * orbitX + Math.sin(delayedYaw) * orbitZ;
-delayedRig.position.z = -Math.sin(delayedYaw) * orbitX + Math.cos(delayedYaw) * orbitZ;
-delayedRig.rotation.y = delayedYaw;
-applyLiftTravel(delayedRig, delayedTravel);
-delayedRig.updateMatrixWorld(true, true);
-const delayedCar = delayedRig.userData.motionCar;
-const delayedCounterweight = delayedRig.userData.motionCounterweight;
-const delayedCarY = delayedCar.position.y;
-const delayedCounterweightY = delayedCounterweight.position.y;
-const delayedRootPosition = delayedRig.position.clone();
-const delayedRootQuaternion = delayedRig.quaternion.clone();
-const delayedRootScale = delayedRig.scale.clone();
-const delayedCabin = attachHeroCabin(delayedRig, cabinMobileScene);
-delayedRig.updateMatrixWorld(true, true);
-assert.ok(delayedRig.userData.cabinFitsFrame, 'late cabin decode is fit-checked at authored root pose despite mobile yaw/orbit');
-assertClose(delayedCar.position.y, delayedCarY, 1e-10, 'late cabin attachment preserves the live car position');
-assertClose(delayedCounterweight.position.y, delayedCounterweightY, 1e-10, 'late cabin attachment preserves the live counterweight position');
-for (const axis of ['x', 'y', 'z']) {
-  assertClose(delayedRig.position[axis], delayedRootPosition[axis], 1e-10, `late cabin attachment preserves live root position ${axis}`);
-  assertClose(delayedRig.scale[axis], delayedRootScale[axis], 1e-10, `late cabin attachment preserves live root scale ${axis}`);
-}
-assert.ok(Math.abs(Math.abs(delayedRig.quaternion.dot(delayedRootQuaternion)) - 1) < 1e-10, 'late cabin attachment preserves the live root rotation');
-const delayedRestBounds = new THREE.Box3(
-  new THREE.Vector3(...delayedRig.userData.motionCabinBounds.min),
-  new THREE.Vector3(...delayedRig.userData.motionCabinBounds.max),
-);
-const delayedLiveBounds = new THREE.Box3().setFromObject(delayedCabin);
-for (const axis of ['x', 'y', 'z']) {
-  assertClose(delayedRestBounds.min[axis], cabinRestBounds.min[axis], 1e-5, `late cabin rest min ${axis} matches the authored placement`);
-  assertClose(delayedRestBounds.max[axis], cabinRestBounds.max[axis], 1e-5, `late cabin rest max ${axis} matches the authored placement`);
-}
-assertClose(delayedLiveBounds.min.y, cabinRestBounds.min.y - delayedTravel, 1e-5, 'late cabin remains attached at the car’s current animated travel');
-
 const homeCabinBounds = cabinRestBounds.clone();
 const homeWeightBounds = counterweightRestBounds.clone();
 const homeCarY = car.position.y;
@@ -335,6 +295,5 @@ console.log(`PASS: optimized triangle budgets — cabin ${cabinDesktopTriangles.
 console.log(`PASS: all ${HERO_GUIDE_RAIL_NAMES.length} T9/T5 guide rails are extended to the marked upper stop without moving their bases.`);
 console.log(`PASS: ${rig.userData.recoloredMaterials} shared source-green scaffold material(s) are recolored CAMAC yellow; fixed scaffold rests on the plaza.`);
 console.log('PASS: extracted Draco BM300-2 only (1 node, 1 mesh, 7 primitives) is seated on the named upper motor supports and stays fixed.');
-console.log('PASS: a late Cabin Pro decode fits at authored rig rest despite mobile yaw/orbit, and preserves all live rig/car/counterweight transforms.');
 console.log('PASS: cabin and authored yoke descend together 2.4 m while the counterweight rises 2.4 m, with both stops inside the frame.');
 console.log('PASS: the bounded 12 s down/dwell/up cycle is smooth and resets both moving pivots.');

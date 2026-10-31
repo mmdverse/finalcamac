@@ -20,7 +20,7 @@ const UP = new THREE.Vector3(0, 1, 0);
 const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px), (pointer: coarse)').matches;
 const DesktopPost = lazy(() => import('./PostProcessing'));
 
-export default function CabinScene({ cabin, onSceneReady, onAssetError, onLoadProgress, skipModel = false }) {
+export default function CabinScene({ cabin, onSceneReady, onLoadProgress, skipModel = false }) {
   const [bounds, setBounds] = useState(null);
   const partBoxesRef = useRef(new Map());
   const act = useStore((s) => s.act);
@@ -57,7 +57,7 @@ export default function CabinScene({ cabin, onSceneReady, onAssetError, onLoadPr
       <LoadProgressBridge onProgress={onLoadProgress} />
       {act === 'hero' && <HeroDprGuard />}
       {/* Storyboard hero: owns the camera while act === 'hero'. */}
-      <HeroScene cabin={cabin} skipCabin={skipModel} onSceneReady={onSceneReady} onAssetError={onAssetError} />
+      <HeroScene cabin={cabin} skipCabin={skipModel} onSceneReady={onSceneReady} />
       {/* Defer the studio clone and stage until the visitor enters the site act. The Hero already
           owns the cached cabin GLB, so this avoids duplicate startup traversal/material work. */}
       {act === 'site' && (
