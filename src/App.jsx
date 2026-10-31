@@ -13,10 +13,10 @@ const HERO_START_DELAY_MS = 1250; // the loader fades for 1.1 s and unmounts at 
 export default function App() {
   const cabin = getCabin('pro-v6');
   const [mountScene, setMountScene] = useState(false);
-  const [heroAssetsReady, setHeroAssetsReady] = useState(false);
+  const [heroFrameReady, setHeroFrameReady] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
-  const onHeroAssetsReady = useCallback(() => setHeroAssetsReady(true), []);
+  const onHeroFrameReady = useCallback(() => setHeroFrameReady(true), []);
   const onLoadProgress = useCallback((value) => setLoadProgress(value), []);
 
   // Paint the DOM shell/loader once before starting the optional WebGL bundle.
@@ -31,11 +31,11 @@ export default function App() {
     };
   }, []);
 
-  // Do not remove the loader until the lift assets are attached and the complete hero scene
-  // has made a WebGL draw. This prevents a cold visit from revealing an empty stage.
+  // Reveal the procedural hero after its first real WebGL frame; the large cabin GLB continues
+  // loading in parallel and does not extend the initial loading cover.
   useEffect(() => {
-    if (heroAssetsReady) setSceneReady(true);
-  }, [heroAssetsReady]);
+    if (heroFrameReady) setSceneReady(true);
+  }, [heroFrameReady]);
 
   // Start the cinematic only after its loading cover has had time to fade away.
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function App() {
           <Suspense fallback={null}>
             <CabinScene
               cabin={cabin}
-              onSceneReady={onHeroAssetsReady}
+              onSceneReady={onHeroFrameReady}
               onLoadProgress={onLoadProgress}
               skipModel={skipModel}
             />
@@ -101,7 +101,7 @@ export default function App() {
 
 /**
  * Loading screen: only the brand video on black, with a white glitch bar along the bottom edge.
- * It stays up until the lift assets are attached and a complete hero frame has been drawn.
+ * It stays up until the first procedural hero frame has actually been drawn; GLBs load in parallel.
  */
 function Loader({ done, brand, progress }) {
   const [unmounted, setUnmounted] = useState(false);
