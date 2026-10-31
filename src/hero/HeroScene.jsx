@@ -512,19 +512,23 @@ function buildHeroWorld() {
 }
 
 /** Show the lightweight frame first, then attach the large cabin as a non-blocking asset. */
-function HeroLift({ rigRef, cabin, skipCabin }) {
-  const [frameReady, setFrameReady] = useState(false);
-  const onFrameReady = useCallback(() => setFrameReady(true), []);
+function HeroLift({ rigRef, cabin, skipCabin, onAssetError }) {
+  const [rig, setRig] = useState(null);
+  const onFrameReady = useCallback((readyRig) => setRig(readyRig), []);
 
   return (
     <>
-      <Suspense fallback={null}>
-        <HeroLiftFrame rigRef={rigRef} onReady={onFrameReady} />
-      </Suspense>
-      {!skipCabin && cabin?.model && frameReady && (
+      <OptionalHeroAssetBoundary onError={onAssetError}>
         <Suspense fallback={null}>
-          <HeroCabin rigRef={rigRef} model={cabin.model} />
+          <HeroLiftFrame rigRef={rigRef} onReady={onFrameReady} />
         </Suspense>
+      </OptionalHeroAssetBoundary>
+      {!skipCabin && cabin?.model && rig && (
+        <OptionalHeroAssetBoundary onError={onAssetError}>
+          <Suspense fallback={null}>
+            <HeroCabin rig={rig} model={cabin.model} />
+          </Suspense>
+        </OptionalHeroAssetBoundary>
       )}
     </>
   );
@@ -538,17 +542,16 @@ function HeroLiftFrame({ rigRef, onReady }) {
     attachHeroMotor(assembledRig, motorScene);
     return assembledRig;
   }, [liftScene, motorScene]);
-  useEffect(() => { onReady?.(); }, [rig, onReady]);
+  useEffect(() => { onReady?.(rig); }, [rig, onReady]);
   return <primitive object={rig} ref={rigRef} />;
 }
 
-/** Attach the large Cabin Pro after the frame is mounted; it never blocks the first scene draw. */
-function HeroCabin({ rigRef, model }) {
+/** Attach the large Cabin Pro to the exact rig object after both GLBs are ready. */
+function HeroCabin({ rig, model }) {
   const { scene: cabinScene } = useGLTF(pickModelUrl(model));
   useEffect(() => {
-    const rig = rigRef.current;
-    if (rig) attachHeroCabin(rig, cabinScene);
-  }, [rigRef, cabinScene]);
+    attachHeroCabin(rig, cabinScene);
+  }, [rig, cabinScene]);
   return null;
 }
 
@@ -562,6 +565,7 @@ class OptionalHeroAssetBoundary extends Component {
 
   componentDidCatch(error) {
     console.error('[CAMAC] Optional hero lift asset failed; continuing without the GLB.', error);
+    this.props.onError?.(error);
   }
 
   render() {
@@ -595,7 +599,7 @@ const UPV = new THREE.Vector3(0, 1, 0);
  * framing, and a click sends a ripple across the plaza the cabin answers to.
  * QA: `?freeze=<s>` or window.__FREEZE pins the timeline for screenshots.
  */
-export default function HeroScene({ cabin, skipCabin = false, onSceneReady }) {
+export default function HeroScene({ cabin, skipCabin = false, onSceneReady, onAssetError }) {
   const { camera, scene, gl } = useThree();
   const firstFrameReady = useRef(false);
   const world = useMemo(() => buildHeroWorld(), []);
@@ -757,11 +761,7 @@ export default function HeroScene({ cabin, skipCabin = false, onSceneReady }) {
   return (
     <>
       <primitive object={world.group} />
-      <OptionalHeroAssetBoundary>
-        <Suspense fallback={null}>
-          <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} />
-        </Suspense>
-      </OptionalHeroAssetBoundary>
+      <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} onAssetError={onAssetError} />
     </>
   );
 }

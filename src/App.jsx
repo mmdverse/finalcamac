@@ -16,7 +16,12 @@ export default function App() {
   const [heroFrameReady, setHeroFrameReady] = useState(false);
   const [sceneReady, setSceneReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
+  const [heroAssetError, setHeroAssetError] = useState('');
   const onHeroFrameReady = useCallback(() => setHeroFrameReady(true), []);
+  const onHeroAssetError = useCallback((error) => {
+    const detail = `${error?.name || 'Error'}: ${error?.message || String(error)}`;
+    setHeroAssetError(detail);
+  }, []);
   const onLoadProgress = useCallback((value) => setLoadProgress(value), []);
 
   // Paint the DOM shell/loader once before starting the optional WebGL bundle.
@@ -76,6 +81,7 @@ export default function App() {
             <CabinScene
               cabin={cabin}
               onSceneReady={onHeroFrameReady}
+              onAssetError={onHeroAssetError}
               onLoadProgress={onLoadProgress}
               skipModel={skipModel}
             />
@@ -95,6 +101,31 @@ export default function App() {
         </Suspense>
       )}
       <Loader done={sceneReady} brand={brand.name} progress={loadProgress} />
+      {heroAssetError && (
+        <div
+          role="alert"
+          dir="rtl"
+          style={{
+            position: 'fixed',
+            left: '12px',
+            bottom: '12px',
+            zIndex: 60,
+            maxWidth: 'min(680px, calc(100vw - 24px))',
+            padding: '10px 12px',
+            border: '1px solid #a53f39',
+            borderRadius: '6px',
+            background: 'rgba(25, 20, 20, .96)',
+            color: '#f5e9e5',
+            font: '12px/1.6 system-ui, sans-serif',
+            overflowWrap: 'anywhere',
+          }}
+        >
+          <strong>بخشی از مدل هیرو بارگذاری نشد.</strong>
+          <code dir="ltr" style={{ display: 'block', marginTop: '4px', color: '#ffd1be' }}>
+            {heroAssetError}
+          </code>
+        </div>
+      )}
     </>
   );
 }
