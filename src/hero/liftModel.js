@@ -220,6 +220,11 @@ export function createLiftRig(sourceScene, paletteYellow) {
   rig.userData.motionCar = movingCar;
   rig.userData.motionYoke = movingYoke;
   rig.userData.motionCounterweight = movingCounterweight;
+  rig.userData.authoredRootTransform = {
+    position: rig.position.toArray(),
+    quaternion: rig.quaternion.toArray(),
+    scale: rig.scale.toArray(),
+  };
   rig.userData.motionCarRestY = movingCar.position.y;
   rig.userData.motionCounterweightRestY = movingCounterweight.position.y;
   rig.userData.motionLocalScale = rig.scale.y;
@@ -332,15 +337,24 @@ export function attachHeroCabin(rig, sourceCabinScene) {
   if (rig.userData.motionCabin) return rig.userData.motionCabin;
 
   // The cabin GLB is deliberately loaded after the hero starts. Fit it against the authored
-  // rest pose, not the live car position at decode time, then restore the current animation pose.
+  // pose of the complete rig, not its live mobile yaw/orbit or moving car, then restore everything.
+  const authoredRootTransform = rig.userData.authoredRootTransform;
+  if (!authoredRootTransform) throw new Error('Hero scaffold is missing its authored root transform');
+  const liveRootPosition = rig.position.clone();
+  const liveRootQuaternion = rig.quaternion.clone();
+  const liveRootScale = rig.scale.clone();
   const liveCarY = movingCar.position.y;
   const liveCounterweightY = movingCounterweight.position.y;
-  movingCar.position.y = rig.userData.motionCarRestY;
-  movingCounterweight.position.y = rig.userData.motionCounterweightRestY;
-  rig.updateMatrixWorld(true, true);
 
   let cabin = null;
   try {
+    rig.position.fromArray(authoredRootTransform.position);
+    rig.quaternion.fromArray(authoredRootTransform.quaternion);
+    rig.scale.fromArray(authoredRootTransform.scale);
+    movingCar.position.y = rig.userData.motionCarRestY;
+    movingCounterweight.position.y = rig.userData.motionCounterweightRestY;
+    rig.updateMatrixWorld(true, true);
+
     sourceCabinScene.updateMatrixWorld(true, true);
     cabin = sourceCabinScene.clone(true);
     cabin.name = 'Hero_Cabin_Pro_V6';
@@ -403,6 +417,9 @@ export function attachHeroCabin(rig, sourceCabinScene) {
   } finally {
     movingCar.position.y = liveCarY;
     movingCounterweight.position.y = liveCounterweightY;
+    rig.position.copy(liveRootPosition);
+    rig.quaternion.copy(liveRootQuaternion);
+    rig.scale.copy(liveRootScale);
     rig.updateMatrixWorld(true, true);
   }
 }
