@@ -1,4 +1,4 @@
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -552,6 +552,23 @@ function HeroCabin({ rigRef, model }) {
   return null;
 }
 
+/** A failed optional GLB must not tear down the procedural hero or the rest of the site. */
+class OptionalHeroAssetBoundary extends Component {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    console.error('[CAMAC] Optional hero lift asset failed; continuing without the GLB.', error);
+  }
+
+  render() {
+    return this.state.failed ? null : this.props.children;
+  }
+}
+
 /** Atmosphere (background + fog) sampled over the 6 s timeline. */
 const atmoColor = new THREE.Color();
 const atmoNext = new THREE.Color();
@@ -740,9 +757,11 @@ export default function HeroScene({ cabin, skipCabin = false, onSceneReady }) {
   return (
     <>
       <primitive object={world.group} />
-      <Suspense fallback={null}>
-        <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} />
-      </Suspense>
+      <OptionalHeroAssetBoundary>
+        <Suspense fallback={null}>
+          <HeroLift rigRef={liftRef} cabin={cabin} skipCabin={skipCabin} />
+        </Suspense>
+      </OptionalHeroAssetBoundary>
     </>
   );
 }

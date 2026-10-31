@@ -20,18 +20,22 @@ store.heroTransition = 0;
 store.heroTransitionActive = false;
 
 class AppErrorBoundary extends React.Component {
-  state = { hasError: false };
+  state = { hasError: false, error: null, componentStack: '' };
 
-  static getDerivedStateFromError() {
-    return { hasError: true };
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
   }
 
   componentDidCatch(error, info) {
     console.error('[CAMAC] App render/startup failed:', error, info.componentStack);
+    this.setState({ componentStack: info.componentStack || '' });
   }
 
   render() {
     if (!this.state.hasError) return this.props.children;
+    const message = this.state.error
+      ? `${this.state.error.name || 'Error'}: ${this.state.error.message || 'No error message'}`
+      : 'Unknown runtime error';
 
     return (
       <main
@@ -50,7 +54,32 @@ class AppErrorBoundary extends React.Component {
         }}
       >
         <p style={{ margin: 0, fontSize: '18px' }}>بارگذاری صفحه کامل نشد.</p>
-        <p style={{ margin: 0, color: '#c6c2b8' }}>لطفاً اتصال را بررسی کنید و دوباره تلاش کنید.</p>
+        <p style={{ margin: 0, color: '#c6c2b8' }}>خطای اجرایی در مرورگر رخ داده است.</p>
+        <pre
+          style={{
+            maxWidth: 'min(760px, 90vw)',
+            margin: 0,
+            padding: '12px',
+            border: '1px solid #484c4e',
+            borderRadius: '6px',
+            color: '#ffd86b',
+            font: '12px/1.6 ui-monospace, monospace',
+            whiteSpace: 'pre-wrap',
+            overflowWrap: 'anywhere',
+            textAlign: 'left',
+            direction: 'ltr',
+          }}
+        >
+          {message}
+        </pre>
+        {this.state.componentStack && (
+          <details style={{ maxWidth: 'min(760px, 90vw)', textAlign: 'left', direction: 'ltr' }}>
+            <summary>React component stack</summary>
+            <pre style={{ whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontSize: '11px' }}>
+              {this.state.componentStack}
+            </pre>
+          </details>
+        )}
         <button
           type="button"
           onClick={() => window.location.reload()}
