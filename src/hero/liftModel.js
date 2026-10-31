@@ -325,68 +325,86 @@ export function attachHeroMotor(rig, sourceMotorScene) {
 /** Mount an unscaled Cabin Pro clone inside the scaffold and on the car's lower yoke. */
 export function attachHeroCabin(rig, sourceCabinScene) {
   const movingCar = rig?.userData.motionCar;
+  const movingCounterweight = rig?.userData.motionCounterweight;
   if (!movingCar) throw new Error('Hero scaffold has no moving car pivot for the cabin mount');
+  if (!movingCounterweight) throw new Error('Hero scaffold has no moving counterweight pivot for the cabin mount');
   if (!sourceCabinScene) throw new Error('Cabin Pro GLB scene is required for the Hero cabin mount');
   if (rig.userData.motionCabin) return rig.userData.motionCabin;
 
-  sourceCabinScene.updateMatrixWorld(true, true);
-  const cabin = sourceCabinScene.clone(true);
-  cabin.name = 'Hero_Cabin_Pro_V6';
-  const materialStats = styleMaterials(cabin, '#ffc21a', { softenLargeSurfaceAo: true });
-  const cabinSourceBounds = objectBounds(cabin, 'Cabin Pro model');
-  const cabinSize = cabinSourceBounds.getSize(new THREE.Vector3());
-  const yokeLowerY = rig.userData.motionYokeLocalBounds.min[1];
-  const [axisX, , axisZ] = rig.userData.motionAxis;
-  const targetCenter = new THREE.Vector3(
-    axisX,
-    yokeLowerY + HERO_CABIN_FLOOR_CLEARANCE + cabinSize.y / 2,
-    axisZ,
-  );
-  const sourceCenter = cabinSourceBounds.getCenter(new THREE.Vector3());
-
-  // Add (rather than attach) to preserve the real-world Cabin Pro dimensions under the
-  // display-scaled scaffold. The lower face sits just above the yoke and the guide rails
-  // define its X/Z alignment.
-  movingCar.add(cabin);
-  cabin.position.add(targetCenter.sub(sourceCenter));
+  // The cabin GLB is deliberately loaded after the hero starts. Fit it against the authored
+  // rest pose, not the live car position at decode time, then restore the current animation pose.
+  const liveCarY = movingCar.position.y;
+  const liveCounterweightY = movingCounterweight.position.y;
+  movingCar.position.y = rig.userData.motionCarRestY;
+  movingCounterweight.position.y = rig.userData.motionCounterweightRestY;
   rig.updateMatrixWorld(true, true);
 
-  const cabinRestBounds = new THREE.Box3().setFromObject(cabin);
-  const fixedFrameBounds = new THREE.Box3(
-    new THREE.Vector3(...rig.userData.fixedFrameBounds.min),
-    new THREE.Vector3(...rig.userData.fixedFrameBounds.max),
-  );
-  const fitsFrame =
-    cabinRestBounds.min.x >= fixedFrameBounds.min.x - BOX_EPSILON &&
-    cabinRestBounds.max.x <= fixedFrameBounds.max.x + BOX_EPSILON &&
-    cabinRestBounds.min.y >= fixedFrameBounds.min.y - BOX_EPSILON &&
-    cabinRestBounds.max.y <= fixedFrameBounds.max.y + BOX_EPSILON &&
-    cabinRestBounds.min.z >= fixedFrameBounds.min.z - BOX_EPSILON &&
-    cabinRestBounds.max.z <= fixedFrameBounds.max.z + BOX_EPSILON;
-  if (!fitsFrame) {
-    movingCar.remove(cabin);
-    throw new Error('Cabin Pro does not fit within the fixed scaffold bounds at the authored car position');
-  }
+  let cabin = null;
+  try {
+    sourceCabinScene.updateMatrixWorld(true, true);
+    cabin = sourceCabinScene.clone(true);
+    cabin.name = 'Hero_Cabin_Pro_V6';
+    const materialStats = styleMaterials(cabin, '#ffc21a', { softenLargeSurfaceAo: true });
+    const cabinSourceBounds = objectBounds(cabin, 'Cabin Pro model');
+    const cabinSize = cabinSourceBounds.getSize(new THREE.Vector3());
+    const yokeLowerY = rig.userData.motionYokeLocalBounds.min[1];
+    const [axisX, , axisZ] = rig.userData.motionAxis;
+    const targetCenter = new THREE.Vector3(
+      axisX,
+      yokeLowerY + HERO_CABIN_FLOOR_CLEARANCE + cabinSize.y / 2,
+      axisZ,
+    );
+    const sourceCenter = cabinSourceBounds.getCenter(new THREE.Vector3());
 
-  rig.userData.motionCabin = cabin;
-  rig.userData.motionCabinName = cabin.name;
-  rig.userData.motionCabinSourceBounds = {
-    min: cabinSourceBounds.min.toArray(),
-    max: cabinSourceBounds.max.toArray(),
-  };
-  rig.userData.motionCabinBounds = {
-    min: cabinRestBounds.min.toArray(),
-    max: cabinRestBounds.max.toArray(),
-  };
-  rig.userData.cabinFitsFrame = fitsFrame;
-  rig.userData.cabinRecoloredMaterials = materialStats.recoloredMaterials;
-  rig.userData.cabinRecoloredMeshObjects = materialStats.recoloredMeshes;
-  const envelope = motionEnvelope(rig);
-  rig.userData.surfaceBounds = {
-    min: envelope.min.toArray(),
-    max: envelope.max.toArray(),
-  };
-  return cabin;
+    // Add (rather than attach) to preserve real-world cabin dimensions under the display-scaled
+    // scaffold. Bounds and alignment are computed at rest even if the animation is already moving.
+    movingCar.add(cabin);
+    cabin.position.add(targetCenter.sub(sourceCenter));
+    rig.updateMatrixWorld(true, true);
+
+    const cabinRestBounds = new THREE.Box3().setFromObject(cabin);
+    const fixedFrameBounds = new THREE.Box3(
+      new THREE.Vector3(...rig.userData.fixedFrameBounds.min),
+      new THREE.Vector3(...rig.userData.fixedFrameBounds.max),
+    );
+    const fitsFrame =
+      cabinRestBounds.min.x >= fixedFrameBounds.min.x - BOX_EPSILON &&
+      cabinRestBounds.max.x <= fixedFrameBounds.max.x + BOX_EPSILON &&
+      cabinRestBounds.min.y >= fixedFrameBounds.min.y - BOX_EPSILON &&
+      cabinRestBounds.max.y <= fixedFrameBounds.max.y + BOX_EPSILON &&
+      cabinRestBounds.min.z >= fixedFrameBounds.min.z - BOX_EPSILON &&
+      cabinRestBounds.max.z <= fixedFrameBounds.max.z + BOX_EPSILON;
+    if (!fitsFrame) {
+      throw new Error('Cabin Pro does not fit within the fixed scaffold bounds at the authored car position');
+    }
+
+    const envelope = motionEnvelope(rig);
+    rig.userData.motionCabin = cabin;
+    rig.userData.motionCabinName = cabin.name;
+    rig.userData.motionCabinSourceBounds = {
+      min: cabinSourceBounds.min.toArray(),
+      max: cabinSourceBounds.max.toArray(),
+    };
+    rig.userData.motionCabinBounds = {
+      min: cabinRestBounds.min.toArray(),
+      max: cabinRestBounds.max.toArray(),
+    };
+    rig.userData.cabinFitsFrame = fitsFrame;
+    rig.userData.cabinRecoloredMaterials = materialStats.recoloredMaterials;
+    rig.userData.cabinRecoloredMeshObjects = materialStats.recoloredMeshes;
+    rig.userData.surfaceBounds = {
+      min: envelope.min.toArray(),
+      max: envelope.max.toArray(),
+    };
+    return cabin;
+  } catch (error) {
+    if (cabin?.parent === movingCar && rig.userData.motionCabin !== cabin) movingCar.remove(cabin);
+    throw error;
+  } finally {
+    movingCar.position.y = liveCarY;
+    movingCounterweight.position.y = liveCounterweightY;
+    rig.updateMatrixWorld(true, true);
+  }
 }
 
 /** Apply a bounded world-space travel amount: car down, counterweight up. */

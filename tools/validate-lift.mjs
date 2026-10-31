@@ -253,6 +253,29 @@ assertClose(rig.scale.y, HERO_LIFT_DISPLAY_SCALE, 1e-9, 'display scale');
 assertClose(fixedFrameBounds.min.y, HERO_LIFT_MOTION.surfaceY, 0.003, 'fixed scaffold rests on the plaza surface');
 assertClose(cabinRestBounds.min.y - yokeRestBounds.min.y, HERO_CABIN_FLOOR_CLEARANCE * HERO_LIFT_DISPLAY_SCALE, 0.003, 'cabin floor is seated just above the lower yoke');
 
+// Reproduce cold-load timing: the frame/motor load first, the car starts moving, and only then
+// does the large cabin GLB finish decoding. Placement must still be computed at authored rest.
+const delayedRig = createLiftRig(scaffoldMobileScene, PAL.yellow);
+attachHeroMotor(delayedRig, heroMotorScene);
+const delayedTravel = 0.8;
+applyLiftTravel(delayedRig, delayedTravel);
+const delayedCar = delayedRig.userData.motionCar;
+const delayedCounterweight = delayedRig.userData.motionCounterweight;
+const delayedCarY = delayedCar.position.y;
+const delayedCounterweightY = delayedCounterweight.position.y;
+const delayedCabin = attachHeroCabin(delayedRig, cabinMobileScene);
+delayedRig.updateMatrixWorld(true, true);
+assert.ok(delayedRig.userData.cabinFitsFrame, 'late cabin decode is fit-checked against the authored rest pose');
+assertClose(delayedCar.position.y, delayedCarY, 1e-10, 'late cabin attachment preserves the live car position');
+assertClose(delayedCounterweight.position.y, delayedCounterweightY, 1e-10, 'late cabin attachment preserves the live counterweight position');
+const delayedRestBounds = new THREE.Box3(
+  new THREE.Vector3(...delayedRig.userData.motionCabinBounds.min),
+  new THREE.Vector3(...delayedRig.userData.motionCabinBounds.max),
+);
+const delayedLiveBounds = new THREE.Box3().setFromObject(delayedCabin);
+assertClose(delayedRestBounds.min.y, cabinRestBounds.min.y, 1e-5, 'late cabin rest bounds match the authored rest-pose placement');
+assertClose(delayedLiveBounds.min.y, cabinRestBounds.min.y - delayedTravel, 1e-5, 'late cabin remains attached at the car’s current animated travel');
+
 const homeCabinBounds = cabinRestBounds.clone();
 const homeWeightBounds = counterweightRestBounds.clone();
 const homeCarY = car.position.y;
@@ -295,5 +318,6 @@ console.log(`PASS: optimized triangle budgets — cabin ${cabinDesktopTriangles.
 console.log(`PASS: all ${HERO_GUIDE_RAIL_NAMES.length} T9/T5 guide rails are extended to the marked upper stop without moving their bases.`);
 console.log(`PASS: ${rig.userData.recoloredMaterials} shared source-green scaffold material(s) are recolored CAMAC yellow; fixed scaffold rests on the plaza.`);
 console.log('PASS: extracted Draco BM300-2 only (1 node, 1 mesh, 7 primitives) is seated on the named upper motor supports and stays fixed.');
+console.log('PASS: a late Cabin Pro decode attaches at authored rest, preserves live car/counterweight motion, and fits the frame.');
 console.log('PASS: cabin and authored yoke descend together 2.4 m while the counterweight rises 2.4 m, with both stops inside the frame.');
 console.log('PASS: the bounded 12 s down/dwell/up cycle is smooth and resets both moving pivots.');
