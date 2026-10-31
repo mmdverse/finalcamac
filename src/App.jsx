@@ -1,29 +1,23 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { getCabin, brand } from './data/cabins';
 import { useStore } from './lib/useStore';
 import { store } from './lib/store';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 
-// WebGL scene and secondary visual effects are split so their code can load on demand.
-const CabinScene = lazy(() => import('./components/CabinScene'));
-const Site = lazy(() => import('./components/Site'));
+// Keep code splitting, but recover once if a first-visit chunk request is stale or interrupted.
+const CabinScene = lazyWithRetry(() => import('./components/CabinScene'), 'CabinScene');
+const Site = lazyWithRetry(() => import('./components/Site'), 'Site');
 const SplashCursor = lazy(() => import('./components/SplashCursor'));
 const HERO_START_DELAY_MS = 1250; // the loader fades for 1.1 s and unmounts at 1.2 s
 
 export default function App() {
   const cabin = getCabin('pro-v6');
   const [mountScene, setMountScene] = useState(false);
-  const [heroFrameReady, setHeroFrameReady] = useState(false);
+  const [heroAssetsReady, setHeroAssetsReady] = useState(false);
+  const [sceneReady, setSceneReady] = useState(false);
   const [loadProgress, setLoadProgress] = useState(0);
-  const heroFrameReadyRef = useRef(false);
-  const onHeroFrameReady = useCallback(() => {
-    if (heroFrameReadyRef.current) return;
-    heroFrameReadyRef.current = true;
-    setHeroFrameReady(true);
-  }, []);
-  const onLoadProgress = useCallback((value) => {
-    // Do not keep rerendering the React tree while large GLBs finish in the background.
-    if (!heroFrameReadyRef.current) setLoadProgress(value);
-  }, []);
+  const onHeroAssetsReady = useCallback(() => setHeroAssetsReady(true), []);
+  const onLoadProgress = useCallback((value) => setLoadProgress(value), []);
 
   // Paint the DOM shell/loader once before starting the optional WebGL bundle.
   useEffect(() => {
@@ -37,17 +31,22 @@ export default function App() {
     };
   }, []);
 
-  // Begin the cinematic as soon as its first hero frame can be shown. Model downloads continue
-  // in parallel and never hold the loading screen open until every Draco mesh has decoded.
+  // Do not remove the loader until the lift assets are attached and the complete hero scene
+  // has made a WebGL draw. This prevents a cold visit from revealing an empty stage.
   useEffect(() => {
-    if (!heroFrameReady) {
+    if (heroAssetsReady) setSceneReady(true);
+  }, [heroAssetsReady]);
+
+  // Start the cinematic only after its loading cover has had time to fade away.
+  useEffect(() => {
+    if (!sceneReady) {
       store.heroStarted = false;
       return undefined;
     }
     store.heroStarted = false;
     const timer = window.setTimeout(() => store.set({ heroStarted: true }), HERO_START_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [heroFrameReady]);
+  }, [sceneReady]);
   // QA flag: /?nogl skips the heavy cabin GLB (hero-only runs on weak GPUs).
   const skipModel = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('nogl');
   // The fluid splash belongs to the main section only, never the hero-to-studio handoff.
@@ -76,7 +75,7 @@ export default function App() {
           <Suspense fallback={null}>
             <CabinScene
               cabin={cabin}
-              onSceneReady={onHeroFrameReady}
+              onSceneReady={onHeroAssetsReady}
               onLoadProgress={onLoadProgress}
               skipModel={skipModel}
             />
@@ -92,17 +91,17 @@ export default function App() {
       </div>
       {mountScene && (
         <Suspense fallback={null}>
-          <Site cabin={cabin} heroReady={heroFrameReady} />
+          <Site cabin={cabin} heroReady={sceneReady} />
         </Suspense>
       )}
-      <Loader done={heroFrameReady} brand={brand.name} progress={loadProgress} />
+      <Loader done={sceneReady} brand={brand.name} progress={loadProgress} />
     </>
   );
 }
 
 /**
  * Loading screen: only the brand video on black, with a white glitch bar along the bottom edge.
- * It fades after the first hero frame is rendered; heavier GLB downloads continue in parallel.
+ * It stays up until the lift assets are attached and a complete hero frame has been drawn.
  */
 function Loader({ done, brand, progress }) {
   const [unmounted, setUnmounted] = useState(false);
