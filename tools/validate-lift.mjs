@@ -23,6 +23,7 @@ const scaffoldMobilePath = path.join(publicDir, 'models/camac-assembly.mobile.gl
 const cabinDesktopPath = path.join(publicDir, 'models/cabin-pro-v6.desktop.glb');
 const cabinMobilePath = path.join(publicDir, 'models/cabin-pro-v6.mobile.glb');
 const heroMotorPath = path.join(publicDir, 'models/hero-motor.glb');
+const heroCabinPath = path.join(publicDir, 'models/cabin-pro-v6.hero.glb');
 
 function readGlbJson(filePath) {
   const bytes = fs.readFileSync(filePath);
@@ -145,6 +146,7 @@ const scaffoldMobileJson = readGlbJson(scaffoldMobilePath);
 const cabinDesktopJson = readGlbJson(cabinDesktopPath);
 const cabinMobileJson = readGlbJson(cabinMobilePath);
 const heroMotorJson = readGlbJson(heroMotorPath);
+const heroCabinJson = readGlbJson(heroCabinPath);
 
 assert.deepEqual(nodeHierarchySignature(scaffoldMobileJson), nodeHierarchySignature(scaffoldDesktopJson), 'mobile scaffold retains the desktop node names, parentage, mesh assignments, and transforms');
 assert.deepEqual(nodeHierarchySignature(cabinMobileJson), nodeHierarchySignature(cabinDesktopJson), 'mobile Cabin Pro retains the desktop node names, parentage, mesh assignments, and transforms');
@@ -184,6 +186,41 @@ const scaffoldDesktopBounds = sceneBounds(scaffoldDesktopScene);
 const scaffoldMobileBounds = sceneBounds(scaffoldMobileScene);
 const cabinDesktopBounds = sceneBounds(cabinDesktopScene);
 const cabinMobileBounds = sceneBounds(cabinMobileScene);
+const heroCabinScene = buildBoundsProxy(heroCabinJson);
+const heroCabinBounds = sceneBounds(heroCabinScene);
+assert.ok(triangleCount(heroCabinJson) < cabinMobileTriangles * 0.65, 'Hero cabin substantially reduces triangle count');
+assert.ok(fs.statSync(heroCabinPath).size < fs.statSync(cabinMobilePath).size * 0.7, 'Hero cabin substantially reduces transfer size');
+assert.ok(heroCabinJson.extensionsRequired?.includes('KHR_draco_mesh_compression'), 'Hero cabin uses Draco');
+for (const axis of ['x', 'y', 'z']) {
+  assertClose(heroCabinBounds.min[axis], cabinMobileBounds.min[axis], 0.005, `Hero cabin min ${axis} matches original`);
+  assertClose(heroCabinBounds.max[axis], cabinMobileBounds.max[axis], 0.005, `Hero cabin max ${axis} matches original`);
+}
+const heroRig = createLiftRig(buildBoundsProxy(scaffoldMobileJson), PAL.yellow);
+attachHeroMotor(heroRig, buildBoundsProxy(heroMotorJson));
+attachHeroCabin(heroRig, heroCabinScene);
+assert.equal(heroRig.userData.cabinFitsFrame, true, 'optimized Hero cabin fits the moving car');
+// Reproduce a cold load where the Hero cabin arrives after the mobile rig has moved and turned.
+const delayedRig = createLiftRig(buildBoundsProxy(scaffoldMobileJson), PAL.yellow);
+attachHeroMotor(delayedRig, buildBoundsProxy(heroMotorJson));
+const yaw = -0.15;
+const [orbitX, orbitZ] = delayedRig.userData.plazaOrbitOffset;
+delayedRig.position.x = Math.cos(yaw) * orbitX + Math.sin(yaw) * orbitZ;
+delayedRig.position.z = -Math.sin(yaw) * orbitX + Math.cos(yaw) * orbitZ;
+delayedRig.rotation.y = yaw;
+applyLiftTravel(delayedRig, 0.8);
+const livePosition = delayedRig.position.clone();
+const liveQuaternion = delayedRig.quaternion.clone();
+const liveCarY = delayedRig.userData.motionCar.position.y;
+const liveWeightY = delayedRig.userData.motionCounterweight.position.y;
+const delayedCabin = attachHeroCabin(delayedRig, buildBoundsProxy(heroCabinJson));
+assert.equal(delayedRig.userData.cabinFitsFrame, true, 'late cabin is checked at the authored rest pose');
+assert.ok(delayedRig.position.distanceTo(livePosition) < 1e-9, 'late mount preserves live root position');
+assert.ok(Math.abs(Math.abs(delayedRig.quaternion.dot(liveQuaternion)) - 1) < 1e-9, 'late mount preserves live yaw');
+assertClose(delayedRig.userData.motionCar.position.y, liveCarY, 1e-9, 'late mount preserves car position');
+assertClose(delayedRig.userData.motionCounterweight.position.y, liveWeightY, 1e-9, 'late mount preserves counterweight position');
+assert.equal(delayedCabin.parent, delayedRig.userData.motionCar, 'late cabin moves with the car');
+console.log(`PASS: optimized Hero cabin fits the rig, preserves bounds, and uses ${triangleCount(heroCabinJson).toLocaleString()} triangles.`);
+console.log('PASS: late cabin attachment preserves live mobile yaw and car/counterweight positions.');
 
 for (const axis of ['x', 'y', 'z']) {
   assertClose(scaffoldDesktopBounds.min[axis], scaffoldMobileBounds.min[axis], 0.003, `mobile scaffold min ${axis} matches desktop`);

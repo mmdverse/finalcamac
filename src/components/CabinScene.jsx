@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { ContactShadows, PerformanceMonitor, useGLTF, useProgress } from '@react-three/drei';
@@ -10,6 +10,8 @@ import { store } from '../lib/store';
 import { useStore } from '../lib/useStore';
 import { fx } from '../lib/fx';
 import { sampleCameraPath } from '../lib/cameraMath';
+import { pickModelUrl } from '../lib/modelQuality';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
 
 // Palette: warm stone-grey stage, white light, safety-yellow accents.
 const BG = '#cfccc4';
@@ -18,13 +20,22 @@ const ORIGIN = new THREE.Vector3(0, 0, 0);
 const UP = new THREE.Vector3(0, 1, 0);
 
 const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px), (pointer: coarse)').matches;
-const DesktopPost = lazy(() => import('./PostProcessing'));
+const DesktopPost = lazyWithRetry(() => import('./PostProcessing'), 'PostProcessing');
 
 export default function CabinScene({ cabin, onSceneReady, onLoadProgress, skipModel = false }) {
   const [bounds, setBounds] = useState(null);
+  const [heroCabinReady, setHeroCabinReady] = useState(false);
+  const onHeroCabinReady = useCallback(() => setHeroCabinReady(true), []);
   const partBoxesRef = useRef(new Map());
   const act = useStore((s) => s.act);
   const assembled = useStore((s) => s.assembled);
+  const heroDone = useStore((s) => s.heroDone);
+
+  // Prepare the detailed studio model only after the Hero cabin is ready and its cinematic
+  // is complete; early scrolling still starts the studio model immediately on demand.
+  useEffect(() => {
+    if (heroDone && heroCabinReady && !skipModel && cabin?.model) useGLTF.preload(pickModelUrl(cabin.model));
+  }, [heroDone, heroCabinReady, skipModel, cabin]);
 
   // The interactive studio clone is deferred until the visitor enters the site act.
   const handleReady = useCallback(({ bounds: b, partBoxes }) => {
@@ -57,7 +68,7 @@ export default function CabinScene({ cabin, onSceneReady, onLoadProgress, skipMo
       <LoadProgressBridge onProgress={onLoadProgress} />
       {act === 'hero' && <HeroDprGuard />}
       {/* Storyboard hero: owns the camera while act === 'hero'. */}
-      <HeroScene cabin={cabin} skipCabin={skipModel} onSceneReady={onSceneReady} />
+      <HeroScene cabin={cabin} skipCabin={skipModel} onSceneReady={onSceneReady} onCabinReady={onHeroCabinReady} />
       {/* Defer the studio clone and stage until the visitor enters the site act. The Hero already
           owns the cached cabin GLB, so this avoids duplicate startup traversal/material work. */}
       {act === 'site' && (

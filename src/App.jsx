@@ -1,10 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { getCabin, brand } from './data/cabins';
 import { store } from './lib/store';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 
-// Load the WebGL scene and site content on demand.
-const CabinScene = lazy(() => import('./components/CabinScene'));
-const Site = lazy(() => import('./components/Site'));
+// A failed code-split request gets one guarded retry with a fresh document.
+const CabinScene = lazyWithRetry(() => import('./components/CabinScene'), 'CabinScene');
+const Site = lazyWithRetry(() => import('./components/Site'), 'Site');
 const HERO_START_DELAY_MS = 1250; // the loader fades for 1.1 s and unmounts at 1.2 s
 
 export default function App() {
@@ -35,8 +36,8 @@ export default function App() {
     };
   }, []);
 
-  // Begin the cinematic as soon as its first hero frame can be shown. Model downloads continue
-  // in parallel and never hold the loading screen open until every Draco mesh has decoded.
+  // Start the cinematic after the Hero world has rendered a frame. Its models load in
+  // parallel; full-resolution studio assets do not block the initial reveal.
   useEffect(() => {
     if (!heroFrameReady) {
       store.heroStarted = false;
@@ -74,7 +75,7 @@ export default function App() {
 
 /**
  * Loading screen: only the brand video on black, with a white glitch bar along the bottom edge.
- * It fades after the first hero frame is rendered; heavier GLB downloads continue in parallel.
+ * It fades after a Hero frame has been rendered, while 3D assets continue loading.
  */
 function Loader({ done, brand, progress }) {
   const [unmounted, setUnmounted] = useState(false);
