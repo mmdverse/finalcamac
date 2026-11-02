@@ -1,12 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { getCabin, brand } from './data/cabins';
-import { useStore } from './lib/useStore';
 import { store } from './lib/store';
 
-// WebGL scene and secondary visual effects are split so their code can load on demand.
+// Load the WebGL scene and site content on demand.
 const CabinScene = lazy(() => import('./components/CabinScene'));
 const Site = lazy(() => import('./components/Site'));
-const SplashCursor = lazy(() => import('./components/SplashCursor'));
 const HERO_START_DELAY_MS = 1250; // the loader fades for 1.1 s and unmounts at 1.2 s
 
 export default function App() {
@@ -50,25 +48,6 @@ export default function App() {
   }, [heroFrameReady]);
   // QA flag: /?nogl skips the heavy cabin GLB (hero-only runs on weak GPUs).
   const skipModel = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('nogl');
-  // The fluid splash belongs to the main section only, never the hero-to-studio handoff.
-  const act = useStore((s) => s.act);
-  const transitionActive = useStore((s) => s.heroTransitionActive);
-  const [allowSplash, setAllowSplash] = useState(() =>
-    typeof window !== 'undefined' && !window.matchMedia('(max-width: 768px), (pointer: coarse)').matches,
-  );
-
-  useEffect(() => {
-    const query = window.matchMedia('(max-width: 768px), (pointer: coarse)');
-    const update = () => setAllowSplash(!query.matches);
-    update();
-    if (query.addEventListener) query.addEventListener('change', update);
-    else query.addListener?.(update);
-    return () => {
-      if (query.removeEventListener) query.removeEventListener('change', update);
-      else query.removeListener?.(update);
-    };
-  }, []);
-
   return (
     <>
       <div className="stage" aria-hidden="true">
@@ -80,13 +59,6 @@ export default function App() {
               onLoadProgress={onLoadProgress}
               skipModel={skipModel}
             />
-          </Suspense>
-        )}
-        {/* A second fluid WebGL simulation competes with the main Canvas on touch devices;
-            keep the decorative splash for desktop pointers only. */}
-        {act === 'site' && !transitionActive && allowSplash && (
-          <Suspense fallback={null}>
-            <SplashCursor RAINBOW_MODE={false} COLOR="#FFD400" />
           </Suspense>
         )}
       </div>
